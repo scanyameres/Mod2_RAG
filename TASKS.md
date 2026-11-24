@@ -1,0 +1,108 @@
+# Tasks Tracker
+
+Core and optional tasks from `125.md`. Bonus points need **at least 2 Medium and 1 Hard** optional tasks.
+
+Legend: `[x]` done · `[~]` partially done · `[ ]` not started
+
+## Core
+
+### 1. RAG implementation
+
+- [~] 1.1 Create a knowledge base relevant to the domain.
+  - Done: documents are uploaded into categories on the Knowledge base page (`page_library.py` → `library.add_document()`), stored in `data/library/<category id>/` and indexed in LanceDB (`store.py`). Missing: the real documents.
+- [~] 1.2 Implement standard document retrieval with embeddings.
+  - Done: chunks and queries are embedded with `openai/text-embedding-3-small` (`embeddings.py`, through `config.get_client()`); `store.vector_search()` returns the nearest chunks by cosine distance. Tested offline with a fake embedding model. Missing: first run with the real API key.
+- [x] 1.3 Use chunking strategies and similarity search.
+  - `chunking.split_pages()`: the text is cut at recognised headings first, then by `RecursiveCharacterTextSplitter` (1,000 characters with 150 overlap, `settings.py`), never across pages. Every chunk has an exact page number and section. Similarity search: see 1.2.
+- [~] 1.4 Advanced RAG: query translation and structured retrieval (from the task description).
+  - Structured retrieval, done: every chunk stores its category, and both searches filter on the categories switched on in the Settings section (`store._category_filter()`). Every chunk also stores its section, the headings above it such as "Zweiter Teil … › Art. 6 Abstandsflächen" or "4 Bäder › 4.2 Lüftung" (`chunking._SectionTracker`); it is searched together with the passage and shown in every reference. Missing: a check of the heading rules on the real documents; fetching a whole article or section by its number.
+  - Query translation, partly: the agent writes its own search query from the conversation, and is told to retry with the regulation's terms or language (`prompts.SYSTEM_PROMPT`). Missing: a dedicated rewrite step (keywords, translation).
+
+### 2. Tool calling
+
+- [~] 2.1 Implement at least 3 different tool calls.
+  - Done, 2 of 3 (`agent.py`): `search_documentation(query)` searches the active document types; `write_document(title, content)` creates or replaces the work product shown in the Output section. Missing: a third tool (candidates: fetch a full page or article of a document, list the documents of a category, a calculator for typical checks).
+- [~] 2.2 Functions are relevant to the domain (e.g. data analysis, calculations, API integrations).
+  - The two tools are (regulation search, writing a rules document for the project). See 2.1 for the third.
+
+### 3. Domain specialisation
+
+- [x] 3.1 Choose a specific domain or use case.
+  - Architecture and building regulations: find the rules that apply to a building project.
+- [~] 3.2 Create a focused knowledge base.
+  - Done: six document types in `categories.toml` (placeholders), switchable per conversation; 13 invented sample documents for them in `sample_data/`. Missing: the real documents and the final list of types.
+- [x] 3.3 Implement domain-specific prompts and responses.
+  - `prompts.SYSTEM_PROMPT`: answer only from the documents, quote values and article references exactly, cite passages as `[n]`, name document and page when asked for the origin, use the project input, write documents with the tool, "not legal advice" note.
+- [~] 3.4 Add relevant security measures for the domain.
+  - Done: question length limit (`agent.validate_question()`); upload limits on type, size and file name (`library.py`, `workspace.py`); category and document ids validated before use in database filters (`categories.py`, `store.py`); search results, project input and work product are declared material, never instructions (`prompts.py`). Missing: an LLM guard against prompt injection as in the Sprint 1 project (`guard.py`).
+
+### 4. Technical implementation
+
+- [~] 4.1 Use LangChain with OpenRouter (OpenAI-compatible SDK) for LLM integration.
+  - Done: `create_agent()` with `@tool` functions (`agent.py`), chat model from `init_chat_model(..., model_provider="openrouter")` (`config.get_chat_model()`), embeddings through the OpenAI SDK pointed at OpenRouter (`config.get_client()`, taken from the Sprint 1 project). Tested offline with a fake chat model. Missing: first run with the real API key.
+- [x] 4.2 Implement proper error handling.
+  - API and model errors are caught in `page_chat._answer()` and shown with `st.error` (a missing API key gets its own message); the question can be asked again. Bad files are reported per file (`ValueError` from `chunking.read_pages()`); one bad file does not stop an upload or a rebuild.
+- [x] 4.3 Include user input validation.
+  - Question: not empty, at most 2,000 characters. Files: PDF / TXT / MD, at most 25 MB, must contain text. Project input: capped at 30,000 characters with a warning. Category: must exist in `categories.toml`.
+
+### 5. User interface
+
+- [x] 5.1 Create an intuitive interface using Streamlit or Next.js.
+  - Streamlit. Assistant page (`page_chat.py`) with four sections: Project input and Settings in the sidebar, Chat and Output side by side filling the window. Knowledge base as a second page (`page_library.py`).
+- [x] 5.2 Show relevant context and sources.
+  - Below each answer: the cited passages with document, section, page, document type, how they were found, and the exact text. Output section: References tab with every passage of the conversation; Search steps tab with all passages the model was given for each search, best first, with their match values (`page_chat._passage_list()`).
+- [x] 5.3 Display tool call results.
+  - "Steps" box of each answer: every search with its query and the passages found, and every write of the work product. The Search steps tab of the Output section shows the same per answer in full (`page_chat._show_search_steps()`). The work product itself is shown in the Output section.
+- [x] 5.4 Include progress indicators for long operations.
+  - `st.status` boxes: live steps while an answer is generated, per-file progress while documents are indexed; spinner for the index rebuild.
+
+## Easy
+
+- [~] 1. Add conversation history and export functionality.
+  - Done: the conversation is kept for the session and sent to the model (last 12 messages); for a logged-in user every conversation is saved and can be reopened and continued from the My history page (`user_store.py`, `page_history.py`, `page_chat.open_conversation()`); the work product can be downloaded as Markdown with its reference list (`Workspace.export_document()`). Missing: export of the conversation itself.
+- [x] 2. Add visualisation of RAG process.
+  - Search steps tab (`page_chat._search_steps_tab()`): for each answer the path of the agent (Question → Search 1 → Search 2 → Answer), the settings used, and for every search the passages given to the model with two bars each: similarity by meaning and keyword score (`retrieval.Hit.similarity`, `keyword_score`), and a mark on the passages the answer cites. The number of passages per search is a slider in Settings. Tested offline with stand-in models; not yet seen with real embeddings.
+- [x] 3. Include source citations in responses.
+  - `[n]` citations in answers and in the work product; numbers stay fixed for the whole conversation (`Workspace.add_source()`).
+- [ ] 4. Add an interactive help feature or chatbot guide.
+
+## Medium
+
+- [~] 1. Implement multi-model support (OpenAI, Anthropic, etc.).
+  - Done: "Model" select box in Settings, options from `settings.CHAT_MODELS` (two OpenAI models, one Anthropic), passed to `config.get_chat_model()`. Missing: first run with the real API key.
+- [~] 2. Add real-time data updates to knowledge base.
+  - Done: uploading or removing a document on the Knowledge base page changes the index at once, so the next question already searches it. Missing: first run with the real API key.
+- [ ] 3. Protect your app against prompt injection.
+  - So far only the prompt rule described in Core 3.4.
+- [x] 4. Add user authentication and personalisation.
+  - Optional login with `streamlit-authenticator` in the sidebar (`auth.login_area()`): log in, create an account (any password for now), log out, remembered by a cookie; accounts in `config.yaml` with hashed passwords, dummy account `sergi`. Personalisation: each user's conversations and work products are saved (`user_store.save_conversation()`, one JSON file per user in `data/users/`) and listed on the My history page, where they can be reopened; the user's total cost is shown. Tested in a headless browser with a fake chat model.
+- [~] 5. Calculate and display token usage and costs.
+  - Done: every chat-model request is reported by the agent with its tokens (`agent.answer_question()`, `usage` events) and priced per model (`pricing.add_request()`: the cost OpenRouter reports, else tokens × the model's price). The Costs section of the sidebar shows the chat total, tokens and requests per model, and the logged-in user's total (`page_chat._costs_section()`, `user_store.total_cost()`). Under the Model select box: the estimated cost of one typical answer with each model (`pricing.estimate_answer_cost()`, token counts in `settings.py`). First run with the real key (2026-11-24): all 22 requests were priced. Missing: embedding requests are not counted; the token counts of the estimate are a guess until measured with documents in the knowledge base.
+- [ ] 6. Add visualisation of tool call results.
+- [ ] 7. Implement conversation export in various formats (PDF, CSV, JSON).
+- [ ] 8. Connect to tools from a publicly available remote MCP server.
+- [ ] 9. Implement rate limiting and API key management.
+- [ ] 10. Add logging and monitoring.
+
+## Hard
+
+- [~] 1. Employ hybrid search.
+  - Done: `retrieval.search()` merges a vector search and a BM25 keyword search (LanceDB full-text index) with Reciprocal Rank Fusion; can be switched off in Settings to compare. The keyword side is tested on real text, the vector side with a fake embedding model. Missing: first run with the real API key and real documents.
+- [ ] 2. Implement A/B testing for different RAG strategies.
+- [ ] 3. Add automated knowledge base updates.
+- [ ] 4. Add multi-language support.
+- [ ] 5. Implement advanced analytics dashboard.
+- [ ] 6. Implement your tools (functions) as MCP servers.
+- [ ] 7. Implement an evaluation of your RAG system, using RAGAs or otherwise.
+
+## Other work (not in `125.md`)
+
+- Project setup with uv (Python 3.14), API key from the environment or `.env` (`config.py`, reused from the Sprint 1 project), `start_app.bat` to launch the app.
+- Project input: the user's own files and notes describe the project and are sent to the model with every question, without entering the knowledge base (`workspace.py`).
+- Work product next to the chat, written and revised by the assistant, with download.
+- Prompts in their own file (`prompts.py`); constants in `settings.py`.
+- Offline tests (`tests/test_backbone.py`, `tests/test_history_and_costs.py`, `uv run pytest`): 28 tests with fake models and a fixed price list, no API key needed.
+- Login, history and costs reuse the Sprint 1 modules `auth.py`, `user_store.py` and `pricing.py`, adapted to conversations and to the LangChain agent.
+- `Architecture.md` summarises the components and decisions.
+- Open: decide the real document types and documents, and how reviewers get a knowledge base (`data/` is git-ignored).
+- Open: delete the leftovers of the earlier Kolumna idea (`DATA_FORMAT.md`, `data/raw/`).

@@ -1,0 +1,31 @@
+[project]
+name = "scanya-ae-afa-updated0209-2-5"
+version = "0.1.0"
+description = "RAG chatbot for architecture and building-regulation documents: hybrid search, document categories and tool calling (LangChain, OpenRouter, LanceDB, Streamlit)"
+readme = "README.md"
+authors = [
+    { name = "scanyameres", email = "scanyameres@gmail.com" }
+]
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "httpx>=0.28.1",
+    "lancedb>=0.41.0",
+    "langchain>=1.5.2",
+    "langchain-openrouter>=0.3.0",
+    "langchain-text-splitters>=1.2.0",
+    "openai>=3.57.0",
+    "pypdf>=7.1.1",
+    "python-dotenv>=1.2.4",
+    "pyyaml>=6.0.4",
+    "streamlit>=1.67.0",
+    "streamlit-authenticator>=0.4.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

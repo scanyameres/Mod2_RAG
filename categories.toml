@@ -1,0 +1,41 @@
+# Document categories of the knowledge base.
+#
+# Every uploaded document belongs to exactly one category, and each conversation can switch
+# categories on or off (sidebar of the Chat page). Edit this list freely:
+# - id: lowercase letters, digits and "_" only. It is the folder name under data/library/ and
+#   the value stored with every chunk, so do not rename an id once documents use it
+#   (or rebuild the index afterwards on the Knowledge base page).
+# - name: shown in the app.
+# - description: shown as a tooltip, and told to the chat model.
+#
+# The six below are placeholders to start with. They match the folders of sample_data/.
+
+[[category]]
+id = "general_building"
+name = "General building rules"
+description = "Building codes and planning law that apply to every project: distances, heights, permits, land use."
+
+[[category]]
+id = "housing"
+name = "Housing and accommodation"
+description = "Rules for dwellings, hotels, hostels and other places where people stay overnight."
+
+[[category]]
+id = "business"
+name = "Business and workplaces"
+description = "Rules for commercial premises: workplaces, shops, restaurants, places of assembly."
+
+[[category]]
+id = "fire_safety"
+name = "Fire safety"
+description = "Fire protection: building material classes, escape routes, fire walls, alarm systems."
+
+[[category]]
+id = "energy_accessibility"
+name = "Energy and accessibility"
+description = "Energy efficiency, insulation and renewable energy rules, and barrier-free design."
+
+[[category]]
+id = "local_zones"
+name = "Local zone rules"
+description = "Municipal statutes for one area (agricultural, urban growth, historic protection): permitted uses, design, materials and parking. They take precedence over the general rules on these points."

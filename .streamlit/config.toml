@@ -1,0 +1,10 @@
+# Streamlit settings for this project (read when the app is started from the project root,
+# as start_app.bat does).
+
+[theme]
+# Accent colour of buttons, switches and links.
+primaryColor = "#2F6F62"
+
+[server]
+# Largest file the upload box accepts, in MB. Keep it equal to MAX_UPLOAD_MB in config.py.
+maxUploadSize = 25
