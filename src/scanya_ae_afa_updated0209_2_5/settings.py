@@ -32,6 +32,10 @@ TEMPERATURE = 0.0
 # (Knowledge base page), because vectors of different models cannot be compared.
 EMBEDDING_MODEL = "openai/text-embedding-3-small"
 EMBEDDING_BATCH_SIZE = 100  # Texts per embedding request.
+# USD per million tokens of EMBEDDING_MODEL on OpenRouter (checked 2026-11-24; update it with
+# the model). Used for the estimate shown before documents are embedded, and for the cost of
+# an embedding request when OpenRouter does not report it.
+EMBEDDING_PRICE_PER_MILLION_TOKENS = 0.02
 
 # --- Chunking (characters) ---
 CHUNK_SIZE = 1000

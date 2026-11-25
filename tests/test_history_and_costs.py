@@ -11,8 +11,10 @@ import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
+from pydantic import Field
 
-from scanya_ae_afa_updated0209_2_5 import agent, library, pricing, settings, user_store
+from scanya_ae_afa_updated0209_2_5 import agent, config, library, pricing, settings, user_store
+from scanya_ae_afa_updated0209_2_5.embeddings import OpenRouterEmbeddings
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace
 
 # USD per token (input, output). "priced/model" stands for any model in the OpenRouter list.
@@ -64,6 +66,29 @@ def test_usage_adds_up_per_model():
 def test_format_usd():
     assert pricing.format_usd(0.00038) == "\\$0.00038"
     assert pricing.format_usd(1.5) == "\\$1.500"
+    assert pricing.format_usd(0) == "\\$0.00000"
+    assert pricing.format_usd(0.0000004) == "\\$0.0000004"  # One search query: still visible.
+    assert pricing.format_usd(0.02, markdown=False) == "$0.020"
+
+
+def test_embedding_requests_are_noted_and_priced(monkeypatch):
+    """OpenRouterEmbeddings notes tokens and cost of each request; pricing knows the embedding price."""
+
+    class FakeEmbeddingsApi:
+        def create(self, model, input):
+            items = [type("Item", (), {"index": i, "embedding": [1.0]}) for i, _ in enumerate(input)]
+            usage = type("Usage", (), {"prompt_tokens": 7 * len(input), "cost": 0.5})
+            return type("Response", (), {"data": items, "usage": usage})
+
+    monkeypatch.setattr(config, "get_client", lambda provider: type("Client", (), {"embeddings": FakeEmbeddingsApi()}))
+    embeddings = OpenRouterEmbeddings()
+    embeddings.embed_query("minimum distance")
+    assert embeddings.usage == [
+        {"model": settings.EMBEDDING_MODEL, "input_tokens": 7, "output_tokens": 0, "reported_cost": 0.5}
+    ]
+    # Without a reported cost: tokens x the price in settings.py.
+    monkeypatch.setattr(settings, "EMBEDDING_PRICE_PER_MILLION_TOKENS", 0.02)
+    assert pricing.request_cost(settings.EMBEDDING_MODEL, 1_000_000, 0) == pytest.approx(0.02)
 
 
 # --- agent.py: usage events ---
@@ -108,6 +133,41 @@ def test_agent_reports_the_usage_of_every_model_request():
             pricing.add_request(usage, **event.usage)
     assert usage["priced/model"]["requests"] == 2
     assert usage["priced/model"]["cost"] == pytest.approx(0.002 + 900 * 1e-6 + 40 * 4e-6)
+
+
+def test_agent_reports_the_embedding_request_of_a_search():
+    class NotingEmbeddings(DeterministicFakeEmbedding):
+        """Fake embedding model that notes its requests like OpenRouterEmbeddings does."""
+
+        usage: list = Field(default_factory=list)
+
+        def embed_query(self, text):
+            self.usage.append(
+                {"model": settings.EMBEDDING_MODEL, "input_tokens": 5, "output_tokens": 0, "reported_cost": None}
+            )
+            return super().embed_query(text)
+
+    embeddings = NotingEmbeddings(size=32)
+    library.add_document("code.txt", b"Art. 6. Die Tiefe betraegt 0,4 H, mindestens 3 m.", "general_building", embeddings)
+    replies = [
+        AIMessage(content="", tool_calls=[{"name": "search_documentation", "args": {"query": "Tiefe"}, "id": "call_1"}]),
+        AIMessage(content="At least 3 m [1]."),
+    ]
+    events = list(
+        agent.answer_question(
+            "Which distance?",
+            history=[],
+            workspace=Workspace(),
+            active_category_ids=["general_building"],
+            chat_model=FakeToolCallingModel(messages=iter(replies)),
+            embeddings=embeddings,
+        )
+    )
+    assert [event.kind for event in events] == ["tool_call", "tool_result", "usage", "answer"]
+    usage = {}
+    pricing.add_request(usage, **events[2].usage)
+    assert usage[settings.EMBEDDING_MODEL]["input_tokens"] == 5
+    assert usage[settings.EMBEDDING_MODEL]["cost"] == pytest.approx(5 * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1e6)
 
 
 # --- user_store.py ---

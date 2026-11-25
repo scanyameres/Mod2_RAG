@@ -291,7 +291,7 @@ def _costs_section(username: str | None) -> None:
         "Costs",
         help="Estimate in US dollars. Every request to a chat model is counted with the price of "
         "the model that answered it: the cost OpenRouter reports, or else tokens × the model's "
-        "price per token. The small embedding requests of the search are not counted.",
+        "price per token. The embedding of each search query is counted too, under the embedding model.",
     )
     if not usage:
         st.caption("This chat: no requests yet.")

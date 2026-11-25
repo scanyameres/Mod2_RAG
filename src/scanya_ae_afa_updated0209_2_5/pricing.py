@@ -16,7 +16,10 @@ A usage dict maps a model id to its totals, and is plain data so it can be saved
                            "cost": 0.0041, "unpriced": 0}}
 "unpriced" counts requests whose cost is unknown (no reported cost and no price found).
 
-Not counted: the embedding requests (a search query costs well under a thousandth of a cent).
+Embedding requests are counted the same way, under the name of the embedding model: the
+query of every search in a chat (reported by agent.py) and the documents added to the
+knowledge base (page_library.py, build_index.py). The embedding model is not in the price
+list of the chat models, so its price is a constant in settings.py.
 
 estimate_answer_cost() is a different thing: not what was spent, but what one typical answer
 would cost with a given model, to compare the models before choosing one.
@@ -53,6 +56,8 @@ def request_cost(model: str, input_tokens: int, output_tokens: int, reported_cos
     """
     if reported_cost is not None:
         return float(reported_cost)
+    if model == settings.EMBEDDING_MODEL:
+        return input_tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000
     try:
         input_price, output_price = _all_model_prices()[model]
     except (httpx.HTTPError, KeyError):
@@ -95,10 +100,17 @@ def total_tokens(usage: dict) -> int:
     return sum(totals["input_tokens"] + totals["output_tokens"] for totals in usage.values())
 
 
-def format_usd(amount: float) -> str:
-    """Format a (usually tiny) USD amount for Streamlit Markdown, e.g. $0.00038.
+def format_usd(amount: float, markdown: bool = True) -> str:
+    """Format a (usually tiny) USD amount, e.g. $0.00038.
 
-    The dollar sign is escaped (\\$): in Streamlit Markdown, text between two $ signs is
+    For Streamlit Markdown the dollar sign is escaped (\\$): text between two $ signs is
     rendered as a math formula, which swallowed the signs and broke the bold text.
+    `markdown=False` gives a plain "$", for the command line.
     """
-    return f"\\${amount:.5f}" if amount < 0.01 else f"\\${amount:.3f}"
+    if amount >= 0.01:
+        number = f"{amount:.3f}"
+    elif amount >= 0.00001 or amount == 0:
+        number = f"{amount:.5f}"
+    else:  # E.g. the embedding of one search query: show its first two digits that are not zero.
+        number = f"{float(f'{amount:.2g}'):.12f}".rstrip("0")
+    return ("\\$" if markdown else "$") + number

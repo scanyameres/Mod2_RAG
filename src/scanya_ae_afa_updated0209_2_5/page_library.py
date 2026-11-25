@@ -1,12 +1,22 @@
 """Knowledge base page: upload documents into a category, see what is indexed, remove documents.
 
-All the work is done by library.py; this file only draws the page.
+All the work is done by library.py; this file only draws the page. Embedding documents costs
+API credits, so the page shows the cost of every upload and rebuild (pricing.py).
 """
 
 import streamlit as st
 
-from scanya_ae_afa_updated0209_2_5 import library, settings
+from scanya_ae_afa_updated0209_2_5 import library, pricing, settings
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
+from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
+
+
+def _embedding_cost(requests: list[dict]) -> str:
+    """Tokens and cost of embedding requests (the `usage` list of the embedding model) as text."""
+    usage = {}
+    for request in requests:
+        pricing.add_request(usage, **request)
+    return f"{pricing.total_tokens(usage):,} tokens · {pricing.format_usd(pricing.total_cost(usage))}"
 
 
 def _upload_section(categories: list[Category]) -> None:
@@ -28,20 +38,24 @@ def _upload_section(categories: list[Category]) -> None:
         return
 
     failed = 0
+    embeddings = get_embeddings()  # Notes its requests, for the cost shown at the end.
     # The status box is the progress indicator: embedding a long PDF takes a while.
     with st.status(f"Indexing {len(files)} file(s) into “{category.name}”…", expanded=True) as status:
         for file in files:
             st.write(f"Reading, splitting and embedding **{file.name}**…")
             try:
-                chunks = library.add_document(file.name, file.getvalue(), category.id)
+                chunks = library.add_document(file.name, file.getvalue(), category.id, embeddings)
                 st.write(f":material/check_circle: {file.name}: {chunks} chunks indexed.")
             except Exception as error:  # Bad file (ValueError) or API problem: report and go on.
                 failed += 1
                 st.write(f":material/error: {file.name}: {error}")
+        cost = f"Embedding: {_embedding_cost(embeddings.usage)}"
         if failed:
-            status.update(label=f"Finished with {failed} problem(s).", state="error", expanded=True)
+            status.update(label=f"Finished with {failed} problem(s). {cost}", state="error", expanded=True)
         else:
-            status.update(label=f"{len(files)} file(s) added to “{category.name}”.", state="complete", expanded=False)
+            status.update(
+                label=f"{len(files)} file(s) added to “{category.name}”. {cost}", state="complete", expanded=False
+            )
 
 
 def _documents_section(categories: list[Category]) -> None:
@@ -71,20 +85,57 @@ def _documents_section(categories: list[Category]) -> None:
                 )
 
 
+def _plan_rebuild() -> None:
+    """Callback of the Rebuild button: note how much would be embedded, for the question.
+
+    A callback runs before the page is redrawn, so the Maintenance box is drawn open.
+    """
+    files = library.library_files()
+    st.session_state["rebuild_plan"] = (len(files), library.estimate_tokens(files))
+
+
 def _maintenance_section() -> None:
-    """Draw the rebuild button (re-reads and re-embeds every file in data/library/)."""
-    with st.expander("Maintenance", icon=":material/build:"):
+    """Draw the rebuild button (re-reads and re-embeds every file in data/library/).
+
+    A rebuild costs API credits, so it takes two clicks: the first shows how much would be
+    embedded (kept in st.session_state["rebuild_plan"]), the second confirms.
+    """
+    state = st.session_state
+    with st.expander("Maintenance", icon=":material/build:", expanded="rebuild_plan" in state):
         st.caption(
             "Rebuild the search index from the files in data/library/. Needed after changing the "
-            "chunk size or the embedding model in settings.py, or after copying files into the "
-            "category folders by hand. Every document is embedded again, which costs API credits."
+            "chunk size, the heading rules or the embedding model. Every document is embedded "
+            "again, which costs API credits. To only add files that were copied into the folders, "
+            "or drop deleted ones, run build_index.bat instead."
         )
-        if st.button("Rebuild index", icon=":material/refresh:"):
-            with st.spinner("Rebuilding the index…"):
-                indexed, problems = library.rebuild_index()
-            st.success(f"{indexed} document(s) indexed.", icon=":material/check_circle:")
-            for problem in problems:
-                st.warning(problem, icon=":material/warning:")
+        st.button("Rebuild index", icon=":material/refresh:", on_click=_plan_rebuild)
+
+        if "rebuild_plan" in state:
+            file_count, tokens = state["rebuild_plan"]
+            estimate = tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000
+            question = st.empty()  # Placeholder, so the question disappears once it is answered.
+            with question.container():
+                st.warning(
+                    f"All {file_count} file(s) in data/library/ will be embedded again: about {tokens:,} "
+                    f"tokens, about {pricing.format_usd(estimate)}. The current index is deleted first.",
+                    icon=":material/warning:",
+                )
+                confirm, cancel, _ = st.columns([2, 2, 6])
+                confirmed = confirm.button("Yes, rebuild", type="primary", width="stretch")
+                cancelled = cancel.button("Cancel", width="stretch")
+            if confirmed or cancelled:
+                del state["rebuild_plan"]
+                question.empty()
+            if confirmed:
+                embeddings = get_embeddings()
+                with st.spinner("Rebuilding the index…"):
+                    indexed, problems = library.rebuild_index(embeddings)
+                st.success(
+                    f"{indexed} document(s) indexed. Embedding: {_embedding_cost(embeddings.usage)}",
+                    icon=":material/check_circle:",
+                )
+                for problem in problems:
+                    st.warning(problem, icon=":material/warning:")
 
 
 def render() -> None:

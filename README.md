@@ -37,6 +37,8 @@ First open **Knowledge base** (top of the page), pick a document type and upload
 
 Logging in is optional. A dummy account exists for now: user `sergi`, password `sergi123`. New accounts can be created in the sidebar; any password is accepted for now.
 
+Without the app: after copying files into `data/library/<category id>/` or deleting some, run `build_index.bat` to bring the index up to date (new files are embedded, deleted ones dropped; unchanged ones are skipped). `build_index.bat --rebuild` embeds everything again. Both show the estimated cost and ask first.
+
 To try the app without real documents, use the invented regulations in `sample_data/`: its [README](sample_data/README.md) says how to load them and which answers to expect.
 
 `uv run` installs the dependencies by itself on the first start, so step 1 of the setup is optional.

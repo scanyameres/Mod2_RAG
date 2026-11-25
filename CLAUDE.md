@@ -23,5 +23,6 @@ Building Rules Assistant (Sprint 2 project): a RAG chatbot that finds the buildi
 - Document types (categories) are defined in `categories.toml`.
 - Knowledge-base documents go in `data/library/<category id>/` and the search index in `data/index/`. Both are git-ignored: documents may be copyrighted (e.g. DIN standards). Never commit them or copy their text into other files of the repo.
 - `store.py` is the only module that talks to LanceDB.
+- The index is updated from `data/library/` with `build_index.bat` (or `uv run python -m scanya_ae_afa_updated0209_2_5.build_index`, `--rebuild` for everything). Anything that embeds documents must show the cost and, for a full rebuild, ask first.
 - Login is optional (`auth.py`, accounts in `config.yaml`, committed with a dummy account). The history of logged-in users is in `data/users/` (`user_store.py`), git-ignored like the rest of `data/`: conversations contain passages of the documents.
 - Keep `TASKS.md` up to date with the status of the core and optional tasks from `125.md`, in the same style: every task listed, a sub-bullet saying what is done (file and function) and what is missing.

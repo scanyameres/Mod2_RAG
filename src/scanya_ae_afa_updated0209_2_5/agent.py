@@ -36,6 +36,7 @@ from langchain_core.tools import BaseTool, tool
 
 from scanya_ae_afa_updated0209_2_5 import config, prompts, retrieval, settings
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
+from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace
 
 
@@ -48,9 +49,10 @@ class Event:
     kind "tool_result": the tool answered `text`; for a search, `sources` are the passages
                         it found, best first (dicts with the Hit fields plus "number").
     kind "answer":      `text` is the final answer.
-    kind "usage":       one request to the chat model was made; `usage` has its "model",
-                        "input_tokens", "output_tokens" and "reported_cost" (USD, from
-                        OpenRouter; None if not reported). The keys match pricing.add_request().
+    kind "usage":       one request to the chat model was made, or one to the embedding model
+                        (the query of a search); `usage` has its "model", "input_tokens",
+                        "output_tokens" and "reported_cost" (USD, from OpenRouter; None if not
+                        reported). The keys match pricing.add_request().
     """
 
     kind: str
@@ -189,6 +191,7 @@ def answer_question(
     categories = load_categories()
     category_names = {category.id: category.name for category in categories}
     active = [category for category in categories if category.id in active_category_ids]
+    embeddings = embeddings or get_embeddings()  # One object per answer: it notes its requests.
 
     agent = create_agent(
         model=chat_model or config.get_chat_model(model_name, settings.TEMPERATURE),
@@ -222,3 +225,9 @@ def answer_question(
                     yield Event("answer", message.text)
                 elif isinstance(message, ToolMessage):
                     yield Event("tool_result", message.text, tool=message.name or "", sources=message.artifact or [])
+            # The searches of this step embedded their queries: report those requests as well.
+            # (The fake embedding model of the tests has no `usage` list.)
+            embedding_requests = getattr(embeddings, "usage", [])
+            for request in embedding_requests:
+                yield Event("usage", "", usage=request)
+            embedding_requests.clear()
