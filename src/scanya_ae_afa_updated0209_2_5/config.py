@@ -1,7 +1,7 @@
-"""API client setup: one OpenAI SDK client, pointed at OpenRouter (used by the app) or OpenAI.
+"""API client setup: one OpenAI SDK client, pointed at OpenRouter.
 
 Taken from the Sprint 1 project (scanya-AE.AFA.updated0209.1.6, config.py): PROVIDERS and
-get_client() are unchanged. Added for this project: get_chat_model(), because the LangChain
+get_client(), without the "OpenAI" provider, which this project does not use. Added for this project: get_chat_model(), because the LangChain
 agent needs a LangChain chat model instead of the plain SDK client.
 
 API keys are read from the environment. The .env file in the project root (git-ignored; see
@@ -25,15 +25,14 @@ from openai import OpenAI
 # Provider name -> (API base URL, environment variable holding its API key).
 PROVIDERS = {
     "OpenRouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "OpenAI": ("https://api.openai.com/v1", "OPENAI_API_KEY"),
 }
 
 
 def get_client(provider: str) -> OpenAI:
-    """Return an OpenAI SDK client for `provider` ("OpenRouter" or "OpenAI").
+    """Return an OpenAI SDK client for `provider` (only "OpenRouter").
 
-    OpenRouter speaks the same API as OpenAI, so the same SDK works for both; only the base
-    URL and the key differ. Used here for the embeddings (embeddings.py).
+    OpenRouter speaks the same API as OpenAI, so the OpenAI SDK works with its base URL and
+    key. Used here for the embeddings (embeddings.py).
 
     Raises:
         ValueError: for an unknown provider.

@@ -50,8 +50,6 @@ class Workspace:
         Raises:
             ValueError: file too large, unsupported type, or no readable text (scanned PDF).
         """
-        if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
-            raise ValueError(f"The file is larger than {settings.MAX_UPLOAD_MB} MB.")
         pages = chunking.read_pages(file_name, data)
         self.project_files[file_name] = "\n\n".join(text.strip() for _, text in pages)
 

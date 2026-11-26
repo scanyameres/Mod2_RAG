@@ -25,7 +25,7 @@ credentials:
       first_name: Sergi
       last_name: Dummy
       logged_in: true
-      password: $2b$12$xuFaRuq/RayHSIIiOQXyx.0hQ.T1EV49bz8CyxJkZBv/JCugBS.QS
+      password: $2b$12$eACG98dfyTHfiHLuxrhMj.SOSISbz.Jx8k/Z8ZdWVdcvnc3meauq.
       roles:
       - admin
     turing:

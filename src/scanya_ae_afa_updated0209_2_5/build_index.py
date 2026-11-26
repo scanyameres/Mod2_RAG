@@ -17,7 +17,7 @@ after "y". The work itself is done by library.py; this file only prints and asks
 
 import argparse
 
-from scanya_ae_afa_updated0209_2_5 import library, pricing, settings, store
+from scanya_ae_afa_updated0209_2_5 import library, pricing, store
 from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 
 
@@ -41,7 +41,7 @@ def main(arguments: list[str] | None = None) -> None:
         for document in removed:
             print(f"  deleted: {document['category']} / {document['source']}")
     tokens = library.estimate_tokens(to_embed)
-    estimate = pricing.format_usd(tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000, markdown=False)
+    estimate = pricing.format_usd(pricing.embedding_cost(tokens), markdown=False)
     print(f"To embed: {len(to_embed)} file(s), about {tokens:,} tokens, about {estimate}.")
 
     # 2. Ask.
@@ -62,9 +62,7 @@ def main(arguments: list[str] | None = None) -> None:
         print(f"  problem: {problem}")
     if any("API_KEY" in problem for problem in problems):  # config.py could not find the key.
         print("The API key was not found. Set OPENROUTER_API_KEY as an environment variable or in .env.")
-    usage = {}
-    for request in embeddings.usage:
-        pricing.add_request(usage, **request)
+    usage = pricing.usage_of(embeddings.usage)
     cost = pricing.format_usd(pricing.total_cost(usage), markdown=False)
     print(f"Embedding: {pricing.total_tokens(usage):,} tokens, {cost}.")
 

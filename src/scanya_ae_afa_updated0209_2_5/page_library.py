@@ -21,9 +21,7 @@ from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 
 def _embedding_cost(requests: list[dict]) -> str:
     """Tokens and cost of embedding requests (the `usage` list of the embedding model) as text."""
-    usage = {}
-    for request in requests:
-        pricing.add_request(usage, **request)
+    usage = pricing.usage_of(requests)
     return f"{pricing.total_tokens(usage):,} tokens · {pricing.format_usd(pricing.total_cost(usage))}"
 
 
@@ -122,7 +120,7 @@ def _maintenance_section() -> None:
 
         if "rebuild_plan" in state:
             file_count, tokens = state["rebuild_plan"]
-            estimate = tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000
+            estimate = pricing.embedding_cost(tokens)
             question = st.empty()  # Placeholder, so the question disappears once it is answered.
             with question.container():
                 st.warning(
@@ -183,7 +181,23 @@ def _app_settings_section(categories: list[Category]) -> None:
                 value=current["guard_enabled"],
                 help="Off: questions go to the chat model unchecked. Only for testing.",
             )
-            saved = st.form_submit_button("Save for everyone", icon=":material/save:", type="primary")
+            save_column, reset_column = st.columns(2)
+            saved = save_column.form_submit_button("Save for everyone", icon=":material/save:", type="primary")
+            reset = reset_column.form_submit_button(
+                "Reset to code defaults",
+                icon=":material/restart_alt:",
+                help="Forget the saved app settings and use the values of settings.py again.",
+            )
+    if reset:
+        try:
+            app_settings.reset()
+            # Redraw at once, so the form shows the default values.
+            st.session_state["app_settings_message"] = "App settings reset to the code defaults."
+            st.rerun()
+        except Exception as error:
+            st.warning(f"Reset on this server, but the backup to GitHub failed: {error}", icon=":material/cloud_off:")
+    if message := st.session_state.pop("app_settings_message", None):
+        st.success(message, icon=":material/check_circle:")
     if saved:
         try:
             app_settings.save(
@@ -212,6 +226,14 @@ def render() -> None:
         st.info("Only the admin can add or remove documents.", icon=":material/lock:")
         _documents_section(categories, admin=False)
         return
+    # Uploads, removals and rebuilds here change only this server's disk: on the hosted app
+    # they are lost at the next restart. The permanent library is data/library/ in git.
+    st.info(
+        "Changes made on this page are temporary: on the hosted app they are lost at the next "
+        "restart. Permanent changes: add or remove files in data/library/ locally, run "
+        "build_index.bat, then commit and push.",
+        icon=":material/info:",
+    )
     _upload_section(categories)
     # Reserve the place of the document list, but fill it last: a rebuild (drawn below it)
     # changes the list, and this way the list always shows the result.

@@ -117,6 +117,13 @@ def login_area() -> str | None:
             if st.session_state.get("authentication_status") is False:
                 st.error("Username or password is incorrect.")
         with signup_tab:
+            # On the hosted app config.yaml is reset at every restart (it comes from git), so a
+            # new account and the way to its history are gone then.
+            st.info(
+                "Accounts created here only work until the app restarts: the account and its "
+                "saved conversations do not persist. For a permanent account, contact the admin.",
+                icon=":material/info:",
+            )
             try:
                 _, new_username, _ = authenticator.register_user(
                     location="main", captcha=False, password_hint=False

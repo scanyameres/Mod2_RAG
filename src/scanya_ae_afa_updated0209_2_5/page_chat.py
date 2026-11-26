@@ -63,7 +63,7 @@ TITLE_LENGTH = 80
 def _default_settings() -> dict:
     """The Settings values a new conversation starts with: the defaults saved by the admin."""
     saved = app_settings.load()
-    return {key: saved[key] for key in ("active_categories", "hybrid", "top_k", "max_searches", "model_name")}
+    return {key: saved[key] for key in app_settings.SEARCH_KEYS}
 
 
 def _init_state(categories: list[Category]) -> None:
@@ -103,13 +103,9 @@ def _new_conversation(categories: list[Category]) -> None:
 def _current_settings() -> dict:
     """The settings of the Settings section as a plain dict (saved with answers and conversations)."""
     state = st.session_state
-    return {
-        "active_categories": list(state["active_categories"]),
-        "hybrid": state["hybrid"],
-        "top_k": state["top_k"],
-        "max_searches": state["max_searches"],
-        "model_name": state["model_name"],
-    }
+    current = {key: state[key] for key in app_settings.SEARCH_KEYS}
+    current["active_categories"] = list(current["active_categories"])  # A copy, not the list in the session.
+    return current
 
 
 # --- History of a logged-in user ---
@@ -121,17 +117,11 @@ def open_conversation(conversation: dict) -> None:
     Called by the My history page, which then switches to this page.
     """
     state = st.session_state
-    saved_settings = conversation["settings"]
     state["messages"] = conversation["messages"]
     state["workspace"] = Workspace(**conversation["workspace"])
-    state["active_categories"] = saved_settings["active_categories"]
-    state["hybrid"] = saved_settings["hybrid"]
-    # Conversations saved before these settings existed have no "top_k" or "max_searches".
-    state["top_k"] = min(saved_settings.get("top_k", settings.TOP_K), settings.TOP_K_MAX)
-    state["max_searches"] = min(saved_settings.get("max_searches", settings.MAX_SEARCHES), settings.MAX_SEARCHES_MAX)
-    # The list of models may have changed since the conversation was saved.
-    saved_model = saved_settings["model_name"]
-    state["model_name"] = saved_model if saved_model in settings.CHAT_MODELS else settings.CHAT_MODELS[0]
+    # Made valid first: the models, document types or settings may have changed since it was saved.
+    valid = app_settings.checked(conversation["settings"])
+    state.update({key: valid[key] for key in app_settings.SEARCH_KEYS})
     state["usage"] = conversation["usage"]
     state["conversation_id"] = conversation["id"]
     state["unsaved"] = False
@@ -352,8 +342,8 @@ def _settings_section(categories: list[Category]) -> None:
 # --- Sidebar: costs ---
 
 
-def _costs_section(username: str | None) -> None:
-    """Sidebar section with the estimated cost of this chat, the user's total and the limit."""
+def _costs_section(username: str | None, limit: float) -> None:
+    """Sidebar section with the estimated cost of this chat, the user's total and the limit (USD)."""
     usage = st.session_state["usage"]
     st.subheader(
         "Costs",
@@ -380,7 +370,6 @@ def _costs_section(username: str | None) -> None:
         st.caption("All conversations in *My history*.")
     else:
         st.caption("Log in to save your conversations and keep a total.")
-    limit = app_settings.load()["spending_limit_usd"]
     st.progress(
         min(_spent(username) / limit, 1.0) if limit else 1.0,
         text=f"Spending limit: {pricing.format_usd(_spent(username))} of {pricing.format_usd(limit)} used",
@@ -461,8 +450,11 @@ def _error_text(error: Exception) -> str:
     return f"Sorry, the answer could not be generated: {error}"
 
 
-def _answer(question: str, category_names: dict[str, str]) -> None:
-    """Run the agent for `question`, show its progress live, and store the result."""
+def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> None:
+    """Run the agent for `question`, show its progress live, and store the result.
+
+    `use_guard`: let the guard (guard.py) check the question first (an app setting).
+    """
     state = st.session_state
     state["unsaved"] = True  # Also if the run fails: its requests are counted in the costs.
     history = [{"role": message["role"], "content": message["content"]} for message in state["messages"]]
@@ -485,7 +477,7 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
                     state["hybrid"],
                     state["top_k"],
                     state["max_searches"],
-                    use_guard=app_settings.load()["guard_enabled"],
+                    use_guard=use_guard,
                 )
                 for event in events:
                     if event.kind == "usage":
@@ -528,8 +520,11 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
     )
 
 
-def _chat_section(categories: list[Category], category_names: dict[str, str]) -> None:
-    """The conversation in a scrolling box, with the question field below it."""
+def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict) -> None:
+    """The conversation in a scrolling box, with the question field below it.
+
+    `rules`: the app settings (app_settings.load()), for the spending limit and the guard.
+    """
     state = st.session_state
     heading, button = st.columns([3, 2], vertical_alignment="bottom")
     heading.subheader("Chat")
@@ -571,14 +566,14 @@ def _chat_section(categories: list[Category], category_names: dict[str, str]) ->
             problem = agent.validate_question(question)
             if problem:
                 st.warning(problem, icon=":material/warning:")
-            elif _spent(auth.current_user()) >= (limit := app_settings.load()["spending_limit_usd"]):
+            elif _spent(auth.current_user()) >= (limit := rules["spending_limit_usd"]):
                 st.warning(
                     f"The spending limit of {pricing.format_usd(limit)} per user is "
                     "reached, so no more questions can be answered. Please contact the app owner.",
                     icon=":material/money_off:",
                 )
             else:
-                _answer(question, category_names)
+                _answer(question, category_names, rules["guard_enabled"])
 
 
 # --- Output ---
@@ -769,6 +764,7 @@ def render() -> None:
         _new_conversation(categories)
     state["owner"] = username
     workspace = state["workspace"]
+    rules = app_settings.load()  # Spending limit and guard, set by the admin; read once per run.
 
     with st.sidebar:
         # Above it: the login box, drawn by app.py. Both are collapsible boxes, to save space.
@@ -781,11 +777,11 @@ def render() -> None:
 
     chat_column, output_column = st.columns([11, 9], gap="medium")
     with chat_column:
-        _chat_section(categories, category_names)
+        _chat_section(categories, category_names, rules)
     with output_column:
         _output_section(workspace, category_names)
 
     if username and state["unsaved"] and state["messages"]:
         _save_with_warning(username)
     with costs_area.container():
-        _costs_section(username)
+        _costs_section(username, rules["spending_limit_usd"])

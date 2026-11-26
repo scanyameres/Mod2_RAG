@@ -76,9 +76,11 @@ def read_pages(file_name: str, data: bytes) -> list[tuple[int | None, str]]:
     """Extract the text of a file as (page number, text) pairs; empty pages are skipped.
 
     Raises:
-        ValueError: unsupported file type, unreadable file, or no text found (e.g. a scanned
-            PDF, which only contains images).
+        ValueError: file larger than MAX_UPLOAD_MB, unsupported file type, unreadable file,
+            or no text found (e.g. a scanned PDF, which only contains images).
     """
+    if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
+        raise ValueError(f"The file is larger than {settings.MAX_UPLOAD_MB} MB.")
     extension = Path(file_name).suffix.lower()
     if extension == ".pdf":
         try:

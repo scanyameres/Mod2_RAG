@@ -65,8 +65,6 @@ def add_document(file_name: str, data: bytes, category_id: str, embeddings: Embe
     """
     if category_id not in {category.id for category in load_categories()}:
         raise ValueError(f"Unknown category '{category_id}'.")
-    if len(data) > settings.MAX_UPLOAD_MB * 1024 * 1024:
-        raise ValueError(f"The file is larger than {settings.MAX_UPLOAD_MB} MB.")
     file_name = _safe_file_name(file_name)
 
     chunks, search_texts = _read_chunks(file_name, data)

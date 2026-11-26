@@ -69,3 +69,20 @@ def test_guard_switched_off_is_not_called():
         )
     )
     assert [event.kind for event in events] == ["answer"]
+
+
+def test_reset_goes_back_to_the_code_defaults():
+    code_defaults = app_settings.load()
+    app_settings.save({**code_defaults, "top_k": 2, "guard_enabled": False, "spending_limit_usd": 5.0})
+    app_settings.reset()
+    assert app_settings.load() == code_defaults
+
+
+def test_settings_of_an_old_conversation_are_made_valid():
+    # Saved long ago: no top_k / max_searches yet, a removed model and a removed document type.
+    old = {"active_categories": ["general_building", "removed_type"], "hybrid": False, "model_name": "old/model"}
+    valid = app_settings.checked(old)
+    assert valid["active_categories"] == ["general_building"]
+    assert valid["hybrid"] is False
+    assert valid["model_name"] == settings.CHAT_MODELS[0]
+    assert valid["top_k"] == settings.TOP_K and valid["max_searches"] == settings.MAX_SEARCHES

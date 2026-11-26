@@ -24,8 +24,8 @@ list of the chat models, so its price is a constant in settings.py.
 estimate_answer_cost() is a different thing: not what was spent, but what one typical answer
 would cost with a given model, to compare the models before choosing one.
 
-Public: add_request(), request_cost(), estimate_answer_cost(), total_cost(), total_tokens(),
-format_usd().
+Public: add_request(), request_cost(), embedding_cost(), usage_of(), estimate_answer_cost(),
+total_cost(), total_tokens(), format_usd().
 """
 
 from functools import lru_cache
@@ -57,12 +57,17 @@ def request_cost(model: str, input_tokens: int, output_tokens: int, reported_cos
     if reported_cost is not None:
         return float(reported_cost)
     if model == settings.EMBEDDING_MODEL:
-        return input_tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000
+        return embedding_cost(input_tokens)
     try:
         input_price, output_price = _all_model_prices()[model]
     except (httpx.HTTPError, KeyError):
         return None
     return input_tokens * input_price + output_tokens * output_price
+
+
+def embedding_cost(tokens: int) -> float:
+    """Cost in USD of embedding `tokens` tokens (price constant in settings.py)."""
+    return tokens * settings.EMBEDDING_PRICE_PER_MILLION_TOKENS / 1_000_000
 
 
 def estimate_answer_cost(model: str) -> float | None:
@@ -88,6 +93,17 @@ def add_request(
         totals["unpriced"] += 1
     else:
         totals["cost"] += cost
+
+
+def usage_of(requests: list[dict]) -> dict:
+    """A usage dict made from a list of requests (keyword arguments of add_request()).
+
+    E.g. the `usage` list of the embedding model (embeddings.py).
+    """
+    usage = {}
+    for request in requests:
+        add_request(usage, **request)
+    return usage
 
 
 def total_cost(usage: dict) -> float:

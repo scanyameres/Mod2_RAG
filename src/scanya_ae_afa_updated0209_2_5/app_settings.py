@@ -15,7 +15,9 @@ cannot break the app.
 On the hosted app the disk is emptied at every restart, so the file is also copied to the
 backup repository of the histories (history_backup.py), like a user's history.
 
-Public: KEYS, load(), save().
+reset() goes back to the values of settings.py (the "Reset to code defaults" button).
+
+Public: KEYS, SEARCH_KEYS, checked(), load(), save(), reset().
 """
 
 import json
@@ -28,6 +30,9 @@ BACKUP_PATH = "settings/app_settings.json"
 
 # The keys of the dict returned by load() and accepted by save().
 KEYS = ("active_categories", "hybrid", "top_k", "max_searches", "model_name", "guard_enabled", "spending_limit_usd")
+# The keys that are also settings of one conversation (Settings section of the Assistant page),
+# saved with every conversation and answer.
+SEARCH_KEYS = ("active_categories", "hybrid", "top_k", "max_searches", "model_name")
 
 # True once the backup was asked for the file in this server process, so a missing file is not
 # looked for on GitHub at every page run.
@@ -47,8 +52,13 @@ def _defaults() -> dict:
     }
 
 
-def _checked(values: dict) -> dict:
-    """`values` over the defaults, with every value made valid (wrong ones fall back to the default)."""
+def checked(values: dict) -> dict:
+    """`values` over the defaults, with every value made valid (wrong ones fall back to the default).
+
+    Also used for the settings of a saved conversation (page_chat.open_conversation()): a
+    conversation saved long ago may name a model or document type that no longer exists, or
+    lack a setting that was added later.
+    """
     default = _defaults()
     result = {**default, **{key: values[key] for key in KEYS if key in values}}
     known_ids = default["active_categories"]
@@ -78,8 +88,8 @@ def load() -> dict:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
     if not path.exists():
-        return _checked({})
-    return _checked(json.loads(path.read_text(encoding="utf-8")))
+        return checked({})
+    return checked(json.loads(path.read_text(encoding="utf-8")))
 
 
 def save(values: dict) -> None:
@@ -90,6 +100,18 @@ def save(values: dict) -> None:
     """
     path = settings.APP_SETTINGS_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_checked(values), indent=1), encoding="utf-8")
+    path.write_text(json.dumps(checked(values), indent=1), encoding="utf-8")
     if history_backup.is_enabled():
         history_backup.upload(BACKUP_PATH, path.read_bytes(), "App settings")
+
+
+def reset() -> None:
+    """Replace the saved app settings with the values of settings.py (also in the backup).
+
+    The defaults are saved, not the file deleted: on the hosted app a deleted file would come
+    back from the backup at the next restart.
+
+    Raises:
+        httpx.HTTPError: as save().
+    """
+    save(_defaults())
