@@ -42,7 +42,8 @@ runs is kept in st.session_state:
   when it was last shown (for the green dots, see _output_section());
 - "session_cost": cost of the earlier conversations of this browser session (for the spending
   limit of a user who is not logged in, see _spent());
-- "language": the language of the interface (language.py).
+- "language": the language of the interface (language.py);
+- "example_question": an example request the user clicked, asked in the next run (_ask_example()).
 """
 
 import re
@@ -76,8 +77,11 @@ BOX_HEIGHT = 560
 # Minimum height of the question field in pixels (about three lines; it grows with the text).
 CHAT_INPUT_HEIGHT = 96
 
-# Example requests shown in an empty chat (keys of translations.TEXTS).
+# Example requests shown in an empty chat (keys of translations.TEXTS); a click asks them.
 EXAMPLE_REQUESTS = ("example_1", "example_2", "example_3")
+
+# Avatars in the chat: the user is the architect, the assistant the expert on the rules.
+AVATARS = {"user": ":material/architecture:", "assistant": ":material/balance:"}
 
 # The views of the output box: id -> (icon, key of its name in translations.TEXTS).
 OUTPUT_VIEWS = {
@@ -316,6 +320,7 @@ def _documents_widgets(categories: list[Category], documents_per_category: Count
     st.subheader(t("documents_to_search"))
     active_ids = []
     for category in categories:
+        # The key's start ("category_<id>_") gives the switch its document type's shade (app.py).
         switched_on = st.toggle(
             f"{category.label(language.current())} ({documents_per_category[category.id]})",  # Number of documents.
             value=category.id in state["active_categories"],
@@ -438,11 +443,16 @@ def _costs_row(username: str | None, limit: float) -> None:
 # --- References (used by the chat and the output section) ---
 
 
-def _show_reference(source: dict, category_names: dict[str, str]) -> None:
-    """Show one passage: its location (document, section, page) in the title, the exact text inside."""
+def _show_reference(source: dict, category_names: dict[str, str], place: str) -> None:
+    """Show one passage: its location (document, section, page) in the title, the exact text inside.
+
+    `place`: where it is drawn ("m3" = below message 3, "doc", "refs"); with the category and
+    the number it makes the key of the passage's box, which app.py colours by the category.
+    """
     section = f" · {source['section']}" if source["section"] else ""
     page = f" · {t('page_number', page=source['page'])}" if source["page"] else ""
-    with st.expander(f"[{source['number']}] {source['source']}{section}{page}"):
+    box = st.container(key=f"ref_{source['category']}_{place}_{source['number']}")
+    with box, st.expander(f"[{source['number']}] {source['source']}{section}{page}"):
         # .get(): passages of conversations saved before the match values existed have none.
         similarity, keyword_score = source.get("similarity"), source.get("keyword_score")
         found_by = []
@@ -457,13 +467,13 @@ def _show_reference(source: dict, category_names: dict[str, str]) -> None:
         st.text(source["text"])
 
 
-def _show_references(text: str, sources: list[dict], category_names: dict[str, str]) -> None:
+def _show_references(text: str, sources: list[dict], category_names: dict[str, str], place: str) -> None:
     """Below an answer: the passages it cites, each with its document, page and exact text."""
     cited = [source for source in sources if source["number"] in citation_numbers(text)]
     if cited:
         st.caption(t("references"))
         for source in sorted(cited, key=lambda source: source["number"]):
-            _show_reference(source, category_names)
+            _show_reference(source, category_names, place)
     elif sources:
         # E.g. after writing the work product: the citations are in the document, not in the chat.
         numbers = ", ".join(f"[{source['number']}]" for source in sorted(sources, key=lambda source: source["number"]))
@@ -489,14 +499,14 @@ def _show_step(step: dict) -> None:
         st.markdown(f":material/article: {step['text']}")
 
 
-def _show_assistant_message(message: dict, category_names: dict[str, str]) -> None:
-    """Show a stored assistant message: collapsed steps, the answer, its references."""
+def _show_assistant_message(message: dict, category_names: dict[str, str], place: str) -> None:
+    """Show a stored assistant message: collapsed steps, the answer, its references (`place`: see _show_reference())."""
     if message["steps"]:
         with st.status(t("steps"), state="complete", expanded=False):
             for step in message["steps"]:
                 _show_step(step)
     st.markdown(message["content"])
-    _show_references(message["content"], message["sources"], category_names)
+    _show_references(message["content"], message["sources"], category_names, place)
 
 
 def _error_text(error: Exception) -> str:
@@ -517,10 +527,10 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
     state["unsaved"] = True  # Also if the run fails: its requests are counted in the costs.
     history = [{"role": message["role"], "content": message["content"]} for message in state["messages"]]
     state["messages"].append({"role": "user", "content": question})
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=AVATARS["user"]):
         st.markdown(question)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=AVATARS["assistant"]):
         steps, sources, answer, blocked = [], {}, "", None
         progress = st.empty()  # Placeholder, so the status box can be removed if the run fails.
         stage, done = ("guard" if use_guard else "model"), {"you"}
@@ -580,7 +590,8 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
             return
         answer = answer or t("no_answer")
         st.markdown(answer)
-        _show_references(answer, list(sources.values()), category_names)
+        # The place of the message this answer becomes (the user's question is already stored).
+        _show_references(answer, list(sources.values()), category_names, f"m{len(state['messages'])}")
 
     state["messages"].append(
         {
@@ -610,16 +621,22 @@ def _export_menu() -> None:
             ("CSV", "export_csv", export.to_csv(conversation), "csv", "text/csv"),
             ("JSON", "export_json", export.to_json(conversation), "json", "application/json"),
         )
+        # One row of small buttons (made smaller by the CSS for "export_formats" in app.py).
+        row = st.container(key="export_formats", horizontal=True, gap="xxsmall")
         for label, help_key, data, extension, mime in formats:
-            st.download_button(
+            row.download_button(
                 label,
                 data=data,
                 file_name=f"{name}.{extension}",
                 mime=mime,
-                icon=":material/download:",
                 help=t(help_key),
-                width="stretch",
+                width="content",
             )
+
+
+def _ask_example(question: str) -> None:
+    """Button callback of an example request: it is asked in the run that follows the click."""
+    st.session_state["example_question"] = question
 
 
 def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict, flow_area):
@@ -643,26 +660,35 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
         on_click=_new_conversation,
         args=(categories,),
     )
+    example = state.pop("example_question", None)  # An example request clicked in the last run.
     box = st.container(height=BOX_HEIGHT, key="chat_box")
     with box:
-        if not state["messages"]:
+        if not state["messages"] and not example:
             if not library.list_documents():
                 st.info(t("knowledge_base_empty"), icon=":material/info:")
             elif not state["active_categories"]:
                 st.warning(t("all_switched_off"), icon=":material/warning:")
+            names = ", ".join(category.label(language.current()) for category in categories)
+            st.markdown(f":material/waving_hand: {t('welcome', categories=names)}")
             st.caption(t("ask_intro"))
-            for example in EXAMPLE_REQUESTS:
-                st.caption(f"· {t(example)}")
-        for message in state["messages"]:
-            with st.chat_message(message["role"]):
+            for request in EXAMPLE_REQUESTS:
+                st.button(
+                    t(request),
+                    icon=":material/chat_bubble:",
+                    key=f"ask_{request}",
+                    on_click=_ask_example,
+                    args=(t(request),),
+                )
+        for index, message in enumerate(state["messages"]):
+            with st.chat_message(message["role"], avatar=AVATARS[message["role"]]):
                 if message["role"] == "assistant":
-                    _show_assistant_message(message, category_names)
+                    _show_assistant_message(message, category_names, f"m{index}")
                 else:
                     st.markdown(message["content"])
 
     # st.chat_input returns the text once, when the user sends it. Inside a column it is drawn
     # here, below the chat box. Taller than one line, so longer questions are readable while typing.
-    question = st.chat_input(t("chat_placeholder"), height=CHAT_INPUT_HEIGHT)
+    question = st.chat_input(t("chat_placeholder"), height=CHAT_INPUT_HEIGHT) or example
     # Drawn before the question is answered, so the answer uses the settings shown.
     _chat_settings_row()
     # Reserved now, filled at the end: the costs are only known after the answer has run.
@@ -711,7 +737,7 @@ def _passage_list(sources: list[dict], cited: set[int]) -> None:
         section = source["section"].split(chunking.SECTION_SEPARATOR)[-1]
         # Backslashes keep characters of file names and headings from being read as Markdown.
         label = re.sub(r"([\\`*_\[\]$#~:])", r"\\\1", " · ".join(filter(None, [source["source"], section])))
-        values = [f"{t('meaning')} {_bar(similarity, 1, 'green')}"]
+        values = [f"{t('meaning')} {_bar(similarity, 1, 'primary')}"]
         if similarity is not None:
             values[0] += f" {similarity:.2f}"
         if best_keyword_score:  # Nothing to show if hybrid search was off.
@@ -719,7 +745,7 @@ def _passage_list(sources: list[dict], cited: set[int]) -> None:
                 f"{t('keywords')} {_bar(keyword_score, best_keyword_score, 'blue')}"
                 + (f" {keyword_score:.1f}" if keyword_score is not None else "")
             )
-        mark = f" :green-badge[:material/check: {t('cited')}]" if source["number"] in cited else ""
+        mark = f" :primary-badge[:material/check: {t('cited')}]" if source["number"] in cited else ""
         lines.append(f"**\\[{source['number']}\\]** {label}{mark}  \n:small[{' · '.join(values)}]")
     st.markdown("\n\n".join(lines))
 
@@ -832,7 +858,7 @@ def _work_product_view(workspace: Workspace, category_names: dict[str, str]) -> 
     if cited:
         st.caption(t("references"))
         for source in cited:
-            _show_reference(source, category_names)
+            _show_reference(source, category_names, "doc")
 
 
 def _references_view(workspace: Workspace, category_names: dict[str, str]) -> None:
@@ -840,7 +866,7 @@ def _references_view(workspace: Workspace, category_names: dict[str, str]) -> No
     if not workspace.sources:
         st.caption(t("references_empty"))
     for source in workspace.sources_by_number():
-        _show_reference(source, category_names)
+        _show_reference(source, category_names, "refs")
 
 
 def _output_versions(workspace: Workspace) -> dict:
@@ -881,7 +907,7 @@ def _output_section(workspace: Workspace, category_names: dict[str, str]) -> Non
     def label(option: str) -> str:
         icon, name_key = OUTPUT_VIEWS[option]
         count = f" ({len(workspace.sources)})" if option == "references" else ""
-        dot = " :green[⬤]" if versions[option] != seen[option] else ""
+        dot = " :primary[⬤]" if versions[option] != seen[option] else ""
         return f"{icon} {t(name_key)}{count}{dot}"
 
     st.segmented_control(

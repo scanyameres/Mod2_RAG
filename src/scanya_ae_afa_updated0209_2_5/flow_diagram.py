@@ -22,7 +22,7 @@ settings below the chat and the Search steps view. app.py tints those with the s
 The texts of the boxes and of the status box are in translations.py (keys "node_<stage>",
 "node_<stage>_sub" and "stage_<stage>"), so the diagram is drawn in the user's language.
 
-Public: COLOURS, STAGES_WITH_LABEL, stage_label(), next_stage(), diagram_html().
+Public: COLOURS, CATEGORY_SHADES, category_colours(), STAGES_WITH_LABEL, stage_label(), next_stage(), diagram_html().
 """
 
 from scanya_ae_afa_updated0209_2_5 import translations
@@ -35,6 +35,18 @@ COLOURS = {
     "output": "196, 140, 60",  # Work product.
     "neutral": "120, 120, 120",  # You, Guard, Answer: the question field and the chat.
 }
+
+# Shades of green for the document types (categories.toml), given in file order. Everything
+# about the knowledge base as a whole uses COLOURS["knowledge"] (the app's teal green: the
+# Documents to search box, hybrid search, the References view, the "cited" marks); these
+# greens only mark one document type: its switch in the sidebar, its references, its box on
+# the Knowledge base page. Dark to light, so the first (most general) type is the darkest.
+CATEGORY_SHADES = ("34, 102, 45", "76, 150, 60", "140, 180, 50")
+
+
+def category_colours(category_ids: list[str]) -> dict[str, str]:
+    """Category id -> its shade ("R, G, B"), by position; more types than shades reuse them."""
+    return {category_id: CATEGORY_SHADES[index % len(CATEGORY_SHADES)] for index, category_id in enumerate(category_ids)}
 
 # The stages that have a text for the status box in the chat while they run (stage_label()).
 STAGES_WITH_LABEL = ("guard", "model", "search", "write", "answer")

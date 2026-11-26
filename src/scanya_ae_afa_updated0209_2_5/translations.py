@@ -286,10 +286,18 @@ TEXTS = {
         "Tots els tipus de document estan desactivats, així que no es pot cercar res.",
         "Alle Dokumenttypen sind ausgeschaltet, daher kann nichts durchsucht werden.",
     ),
+    "welcome": (
+        "**Welcome!** I find the building rules that apply to your project in: {categories}. "
+        "Every rule comes with its reference.",
+        "**Benvingut/da!** Busco les normes d'edificació que s'apliquen al teu projecte a: {categories}. "
+        "Cada norma té la seva referència.",
+        "**Willkommen!** Ich finde die Bauvorschriften, die für Ihr Projekt gelten, in: {categories}. "
+        "Jede Vorschrift mit ihrer Quelle.",
+    ),
     "ask_intro": (
-        "Ask about the rules that apply to your project. For example:",
-        "Pregunta per les normes que s'apliquen al teu projecte. Per exemple:",
-        "Fragen Sie nach den Vorschriften, die für Ihr Projekt gelten. Zum Beispiel:",
+        "Click an example to ask it, or type your own question below:",
+        "Fes clic en un exemple per preguntar-lo, o escriu la teva pregunta a sota:",
+        "Klicken Sie auf ein Beispiel, um es zu fragen, oder schreiben Sie unten Ihre eigene Frage:",
     ),
     "example_1": (
         "Which rules apply to the project described in my files?",

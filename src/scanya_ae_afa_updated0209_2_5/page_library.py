@@ -78,7 +78,9 @@ def _documents_section(categories: list[Category], admin: bool) -> None:
     code = language.current()
     for category in categories:
         in_category = [document for document in documents if document["category"] == category.id]
-        with st.expander(f"{category.label(code)} · {len(in_category)}", expanded=bool(in_category)):
+        # The key gives the box its document type's shade (app.py).
+        box = st.container(key=f"catlib_{category.id}")
+        with box, st.expander(f"{category.label(code)} · {len(in_category)}", expanded=bool(in_category)):
             st.caption(category.tooltip(code))
             for document in in_category:
                 name, details, button = st.columns([6, 4, 1], vertical_alignment="center")
