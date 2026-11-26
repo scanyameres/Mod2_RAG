@@ -34,7 +34,7 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - [x] 3.3 Implement domain-specific prompts and responses.
   - `prompts.SYSTEM_PROMPT`: answer only from the documents, quote values and article references exactly, cite passages as `[n]`, name document and page when asked for the origin, use the project input, write documents with the tool, "not legal advice" note.
 - [~] 3.4 Add relevant security measures for the domain.
-  - Done: question length limit (`agent.validate_question()`); upload limits on type, size and file name (`library.py`, `workspace.py`); category and document ids validated before use in database filters (`categories.py`, `store.py`); search results, project input and work product are declared material, never instructions (`prompts.py`). Missing: an LLM guard against prompt injection as in the Sprint 1 project (`guard.py`).
+  - Done: LLM guard against prompt injection, off-topic and harmful requests before every answer (`guard.check_question()`, see Medium 3); question length limit (`agent.validate_question()`); upload limits on type, size and file name (`library.py`, `workspace.py`); category and document ids validated before use in database filters (`categories.py`, `store.py`); search results, project input and work product are declared material, never instructions (`prompts.py`). Missing: nothing planned.
 
 ### 4. Technical implementation
 
@@ -72,8 +72,8 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
   - Done: "Model" select box in Settings, options from `settings.CHAT_MODELS` (two OpenAI models, one Anthropic), passed to `config.get_chat_model()`. Missing: first run with the real API key.
 - [~] 2. Add real-time data updates to knowledge base.
   - Done: uploading or removing a document on the Knowledge base page changes the index at once, so the next question already searches it. Missing: first run with the real API key.
-- [ ] 3. Protect your app against prompt injection.
-  - So far only the prompt rule described in Core 3.4.
+- [x] 3. Protect your app against prompt injection.
+  - `guard.check_question()`: before every answer, a small model (`settings.GUARD_MODEL`, gpt-6-luna) judges the question with structured output (`GuardVerdict`) and blocks prompt injection, off-topic and harmful requests; only allowed questions reach the chosen chat model (`agent.answer_question()`, `blocked` event; warning in `page_chat._answer()`). It sees the start of the last answer, so follow-ups pass. Fails closed. Its cost is counted. Tested offline (`tests/test_guard.py`) and with the real model on 2026-11-25: 5 legitimate questions (incl. follow-up, greeting, German) allowed, 7 attacks or off-topic requests blocked. Second layer: the system prompt treats search results, project input and work product as material, never instructions (Core 3.4). Not covered by the guard: injected text inside project files or knowledge-base documents.
 - [x] 4. Add user authentication and personalisation.
   - Optional login with `streamlit-authenticator` in the sidebar (`auth.login_area()`): log in, create an account (any password for now), log out, remembered by a cookie; accounts in `config.yaml` with hashed passwords, dummy account `sergi`. Personalisation: each user's conversations and work products are saved (`user_store.save_conversation()`, one JSON file per user in `data/users/`) and listed on the My history page, where they can be reopened; the user's total cost is shown. Tested in a headless browser with a fake chat model.
 - [~] 5. Calculate and display token usage and costs.
@@ -101,7 +101,7 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - Project input: the user's own files and notes describe the project and are sent to the model with every question, without entering the knowledge base (`workspace.py`).
 - Work product next to the chat, written and revised by the assistant, with download.
 - Prompts in their own file (`prompts.py`); constants in `settings.py`.
-- Offline tests (`tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py`, `uv run pytest`): 36 tests with fake models and a fixed price list, no API key needed.
+- Offline tests (`tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py`, `tests/test_guard.py`, `uv run pytest`): 43 tests with fake models and a fixed price list, no API key needed.
 - Command-line build tool (`build_index.py`, `build_index.bat`): updates the index from `data/library/` (`library.sync_index()`: new files embedded, deleted files dropped) or rebuilds it (`--rebuild`); both ask first and show the estimated embedding cost. The Rebuild button of the Knowledge base page asks as well.
 - Login, history and costs reuse the Sprint 1 modules `auth.py`, `user_store.py` and `pricing.py`, adapted to conversations and to the LangChain agent.
 - `Architecture.md` summarises the components and decisions.

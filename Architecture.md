@@ -12,9 +12,10 @@ All modules are in `src/scanya_ae_afa_updated0209_2_5/`.
 | Assistant page | `page_chat.py` | The main page, five sections: **Project input**, **Settings** and **Costs** (sidebar), **Chat** (left), **Output** (right: work product, references and search steps). Only draws and stores the session state; no feature logic. |
 | Knowledge base page | `page_library.py` | Secondary page: upload documents into a category, list and remove them, rebuild the index. |
 | History page | `page_history.py` | "My history": the saved conversations of the logged-in user, each with its cost, a download of its work product and an *Open* button. |
+| Guard | `guard.py` | `check_question()`: a small, cheap model (`settings.GUARD_MODEL`) judges each question with structured output before the chat agent runs: prompt injection, off-topic and harmful requests are blocked. No Streamlit code. |
 | Chat agent | `agent.py` | `answer_question()`: a LangChain agent (`create_agent`) with two tools, `search_documentation` and `write_document`. Yields its steps as `Event`s. No Streamlit code. |
 | Workspace | `workspace.py` | `Workspace`: what one conversation works with besides the messages: project input (the user's files and notes), the work product, and the numbered sources. No Streamlit code. |
-| Prompts | `prompts.py` | The system prompt and the fixed tool answers, as constants. |
+| Prompts | `prompts.py` | The system prompt, the guard's prompts and the fixed tool answers, as constants. |
 | Search | `retrieval.py` | `search()`: vector search + keyword search merged with Reciprocal Rank Fusion; keyword part can be switched off. |
 | Search index | `store.py` → `data/index/` | One LanceDB table with text, embedding and metadata of every chunk. The only module that talks to the database. |
 | Document library | `library.py` → `data/library/<category id>/` | `add_document()`, `remove_document()`, `list_documents()`, `sync_index()` (embed new files, drop deleted ones), `rebuild_index()` (embed everything again). Keeps the original files, so the index can be rebuilt. |
@@ -29,7 +30,7 @@ All modules are in `src/scanya_ae_afa_updated0209_2_5/`.
 | Config | `config.py` | Taken from the Sprint 1 project: `get_client()` (OpenAI SDK client for OpenRouter, key from `.env` / the environment), plus `get_chat_model()` for LangChain. |
 | Settings | `settings.py` | Constants: folders, model names, chunk and search parameters, limits. |
 | Streamlit config | `.streamlit/config.toml` | Accent colour and upload size limit. |
-| Tests | `tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py` | Offline tests with fake models and a fixed price list (`uv run pytest`). |
+| Tests | `tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py`, `tests/test_guard.py`; fakes in `tests/fakes.py` | Offline tests with fake models and a fixed price list (`uv run pytest`). |
 | Task tracker | `TASKS.md` | Status of the core and optional tasks from `125.md`. |
 | README | `README.md` | Features, setup, how to run. |
 
@@ -38,6 +39,8 @@ All modules are in `src/scanya_ae_afa_updated0209_2_5/`.
 **Knowledge base** (prepared once, extended any time). On the Knowledge base page the user picks a category and uploads files. `library.add_document()` reads the text (`chunking.read_pages()`) and splits it (`split_pages()`): first at every recognised heading, then into chunks of about 1,000 characters, never across a page. Each chunk is embedded (`embeddings.py`) and stored as one row in LanceDB (`store.add_chunks()`): text, vector, category, file name, section, page. What is embedded and keyword-indexed is the passage together with its file name and section headings. The original file is kept in `data/library/<category id>/`.
 
 **A conversation** happens on the Assistant page. The user can describe the project in the *Project input* section (files and notes, kept in the `Workspace`, not added to the knowledge base), choose in *Settings* which document types are searched, whether hybrid search is on and how many passages the model gets per search, and then chats. For each question `page_chat.py` calls `agent.answer_question()` with the question, the earlier messages, the workspace and the settings.
+
+**The guard.** Before anything else, `answer_question()` calls `guard.check_question()`. The guard model sees its own fixed rules, the start of the assistant's last answer (so "and for hotels?" is understood as a follow-up) and the question, and answers `allowed` + a one-sentence `reason`. A blocked question yields a `blocked` event and ends there: the chosen chat model is never called. The page shows the reason as a warning and drops the question from the conversation, so it is neither sent as history nor saved. The guard's request is reported as a `usage` event and appears in the costs under its own model.
 
 **One answer.** The agent's system prompt contains the rules of behaviour, the active and switched-off document types, the project input, the current work product and the list of passages found so far. The chat model then decides which tools to call:
 
@@ -57,12 +60,13 @@ After reading the passages the model may search again, with other words or for a
 Imports go one way, in layers:
 
 - **Pages:** `app.py` → `auth.py`, `page_chat.py`, `page_library.py`, `page_history.py` → `agent.py`, `workspace.py`, `library.py`, `user_store.py`, `pricing.py`, `categories.py`, `settings.py`. `page_history.py` also uses `page_chat.open_conversation()`.
-- **Logic:** `agent.py` → `retrieval.py`, `workspace.py`, `prompts.py`, `config.py`; `library.py` → `chunking.py`, `embeddings.py`, `store.py`; `retrieval.py` → `store.py`, `embeddings.py`; `workspace.py` → `chunking.py`.
+- **Logic:** `agent.py` → `guard.py`, `retrieval.py`, `workspace.py`, `prompts.py`, `config.py`; `library.py` → `chunking.py`, `embeddings.py`, `store.py`; `retrieval.py` → `store.py`, `embeddings.py`; `workspace.py` → `chunking.py`.
 - **Services:** `embeddings.py` → `config.py`; `store.py` → LanceDB; `user_store.py` → `pricing.py` (totals), JSON files; `pricing.py` → OpenRouter models endpoint. `settings.py` and `prompts.py` are constants only.
 
 | Module | Function / class | What it does |
 |---|---|---|
-| `agent.py` | `answer_question(question, history, workspace, active_category_ids, model_name, hybrid, top_k)` | Builds the two tools and the system prompt for this answer, runs the agent loop and yields `Event`s (`tool_call`, `tool_result`, `usage`, `answer`). Changes the workspace (sources, work product). |
+| `agent.py` | `answer_question(question, history, workspace, active_category_ids, model_name, hybrid, top_k)` | Runs the guard; if allowed, builds the two tools and the system prompt for this answer, runs the agent loop and yields `Event`s (`tool_call`, `tool_result`, `usage`, `answer`, or `blocked`). Changes the workspace (sources, work product). |
+| `guard.py` | `check_question(question, history)` → `GuardResult` | `allowed`, the message for the user if not, and the usage of the guard's request. Model errors are raised (fail closed); a reply without a readable verdict counts as blocked. |
 | | `validate_question(question)` | Empty or too long (`MAX_QUESTION_LENGTH`): returns a message, else `None`. |
 | `workspace.py` | `Workspace.add_project_file()`, `project_input()`, `project_input_is_cut()` | Read a project file; build the text sent to the model (cut at `MAX_PROJECT_INPUT_CHARS`). |
 | | `Workspace.add_source(hit)`, `sources_by_number()` | Give a passage its fixed number; list sources. |
@@ -109,7 +113,8 @@ Session state of the Assistant page (`st.session_state`): `messages` (answers wi
 - **Login details learned the hard way**: the login cookie is written by a browser component, so the page waits one second before redrawing after a login or logout (`COOKIE_WAIT_SECONDS`); redrawn at once, the cookie was never written and a reload logged the user out. And the login box is drawn after `st.navigation()`, otherwise reading the cookie sends a page opened by its address back to the Assistant page.
 - **History = one JSON file per user, the whole conversation saved after every answer**: as in the Sprint 1 project, readable and without a database. Saving everything (messages, workspace, settings, usage) is what allows continuing a conversation with the same passage numbers and work product. Changes made between two answers (notes, settings) are saved with the next answer. The files are in `data/users/`, git-ignored unlike in Sprint 1: conversations contain passages of the knowledge-base documents.
 - **Costs: real cost if reported, estimate otherwise, per model**: OpenRouter returns the cost of a request and `langchain-openrouter` passes it on; if it is missing, tokens × the per-token prices of that model from `https://openrouter.ai/api/v1/models` (fetched once per app run). Costs are stored per model because the model can be changed during a conversation. The user's total is the sum over the saved conversations, so there is no second number to keep in step. Embedding requests are counted too: `OpenRouterEmbeddings` notes each request in its `usage` list, the agent reports the query of every search as a `usage` event (its own line in the chat costs), and the Knowledge base page and the build tool show the cost of embedding documents. The embedding model is not in the chat price list, so its price is a constant in `settings.py`.
-- **Security so far**: length limit for questions; upload limits (type, size, sanitised file name); category and document ids validated before use in filters; the system prompt treats search results, project input and work product as material, never as instructions, answers only from the documents and adds a "not legal advice" note.
+- **Prompt-injection guard = a small model in front of the big one** (`guard.py`). Every question is judged first by the cheapest model of the list (`openai/gpt-6-luna`, about 520 input / 25-45 output tokens, ≈ $0.0001 per question), whichever chat model the user chose; only allowed questions reach the chat model and the knowledge base. It blocks prompt injection, off-topic requests and requests for harmful help, and is told to allow when unsure about the domain, since the assistant answers only from its documents anyway. It **fails closed**: if the guard cannot be reached the question is not answered (a guard that lets everything through when it fails protects nothing; besides, the chat model would usually fail as well). Its reason is always in English, like the rest of the interface: asked for "the language of the message", the model answered English messages in Spanish or French. Only the question is checked, not the project input or the documents: they are long and sent with every question, so the prompt rule below covers them. Considered: `openai/gpt-oss-safeguard-20b` (a model made for such policies, slightly cheaper); not chosen because gpt-6-luna is already used and reliable with structured output.
+- **Security so far**: guard (above); length limit for questions; upload limits (type, size, sanitised file name); category and document ids validated before use in filters; the system prompt treats search results, project input and work product as material, never as instructions, answers only from the documents and adds a "not legal advice" note.
 
 ## Diagram: from question to answer
 
@@ -121,7 +126,9 @@ flowchart TD
     end
     Q["Chat: question"] --> V{"validate_question()"}
     V -- "empty / too long" --> W["st.warning"]
-    V -- ok --> A["agent.answer_question()<br/>system prompt: rules, document types,<br/>project input, work product, sources so far"]
+    V -- ok --> G{"guard.check_question()<br/>small model"}
+    G -- blocked --> GW["st.warning with the reason,<br/>question dropped"]
+    G -- allowed --> A["agent.answer_question()<br/>system prompt: rules, document types,<br/>project input, work product, sources so far"]
     PI --> WS["Workspace"]
     WS --> A
     SE --> A

@@ -1,6 +1,8 @@
 """The chat agent: a LangChain agent that answers a question by calling tools (no Streamlit code).
 
 Flow of one answer (answer_question()):
+0. The guard (guard.py) lets a small model check the question for prompt injection and
+   scope. A blocked question ends here, with a "blocked" event and no request to the chat model.
 1. The chat model reads the system prompt (rules, active document types, the user's project
    input, the current work product, the passages found so far), the conversation and the new
    question.
@@ -34,7 +36,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool
 
-from scanya_ae_afa_updated0209_2_5 import config, prompts, retrieval, settings
+from scanya_ae_afa_updated0209_2_5 import config, guard, prompts, retrieval, settings
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
 from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace
@@ -49,8 +51,10 @@ class Event:
     kind "tool_result": the tool answered `text`; for a search, `sources` are the passages
                         it found, best first (dicts with the Hit fields plus "number").
     kind "answer":      `text` is the final answer.
-    kind "usage":       one request to the chat model was made, or one to the embedding model
-                        (the query of a search); `usage` has its "model", "input_tokens",
+    kind "blocked":     the guard did not pass the question on; `text` is the message for the
+                        user. It is the last event: the chat model is not called.
+    kind "usage":       one request to the chat model was made, one to the guard model, or one
+                        to the embedding model (the query of a search); `usage` has its "model", "input_tokens",
                         "output_tokens" and "reported_cost" (USD, from OpenRouter; None if not
                         reported). The keys match pricing.add_request().
     """
@@ -167,6 +171,7 @@ def answer_question(
     top_k: int = settings.TOP_K,
     chat_model: BaseChatModel | None = None,
     embeddings: Embeddings | None = None,
+    guard_model: BaseChatModel | None = None,
 ) -> Iterator[Event]:
     """Answer `question` and yield the steps as Events (tool calls, tool results, usage, the answer).
 
@@ -182,12 +187,19 @@ def answer_question(
         model_name: OpenRouter model id (one of settings.CHAT_MODELS).
         hybrid: True = vector + keyword search; False = vector search only.
         top_k: Passages the model gets per search.
-        chat_model, embeddings: Only for tests, to run without an API key.
+        chat_model, embeddings, guard_model: Only for tests, to run without an API key.
 
     Raises:
         Whatever the model or embedding API raises (missing key, network, rate limit ...);
         the UI catches it and shows an error.
     """
+    verdict = guard.check_question(question, history, guard_model)
+    if verdict.usage:
+        yield Event("usage", "", usage=verdict.usage)
+    if not verdict.allowed:
+        yield Event("blocked", verdict.message)
+        return
+
     categories = load_categories()
     category_names = {category.id: category.name for category in categories}
     active = [category for category in categories if category.id in active_category_ids]

@@ -13,6 +13,7 @@ from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 from pydantic import Field
 
+from fakes import FakeGuardModel
 from scanya_ae_afa_updated0209_2_5 import agent, config, library, pricing, settings, user_store
 from scanya_ae_afa_updated0209_2_5.embeddings import OpenRouterEmbeddings
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace
@@ -121,7 +122,7 @@ def test_agent_reports_the_usage_of_every_model_request():
             workspace=Workspace(),
             active_category_ids=["general_building"],
             model_name="priced/model",
-            chat_model=FakeToolCallingModel(messages=iter(replies)),
+            chat_model=FakeToolCallingModel(messages=iter(replies)), guard_model=FakeGuardModel(),
             embeddings=embeddings,
         )
     )
@@ -159,7 +160,7 @@ def test_agent_reports_the_embedding_request_of_a_search():
             history=[],
             workspace=Workspace(),
             active_category_ids=["general_building"],
-            chat_model=FakeToolCallingModel(messages=iter(replies)),
+            chat_model=FakeToolCallingModel(messages=iter(replies)), guard_model=FakeGuardModel(),
             embeddings=embeddings,
         )
     )

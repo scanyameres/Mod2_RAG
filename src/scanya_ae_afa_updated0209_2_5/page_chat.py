@@ -393,7 +393,7 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
         st.markdown(question)
 
     with st.chat_message("assistant"):
-        steps, sources, answer = [], {}, ""
+        steps, sources, answer, blocked = [], {}, "", ""
         progress = st.empty()  # Placeholder, so the status box can be removed if the run fails.
         try:
             # The status box is the progress indicator: it lists each step as it happens.
@@ -414,6 +414,9 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
                     if event.kind == "answer":
                         answer = event.text
                         continue
+                    if event.kind == "blocked":  # The guard did not pass the question on.
+                        blocked = event.text
+                        continue
                     step = {"kind": event.kind, "tool": event.tool, "text": event.text, "sources": event.sources}
                     steps.append(step)
                     _show_step(step)
@@ -424,6 +427,11 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
             progress.empty()
             state["messages"].pop()  # Forget the question, so it can be asked again.
             st.error(_error_text(error), icon=":material/error:")
+            return
+        if blocked:
+            progress.empty()
+            state["messages"].pop()  # A blocked question does not become part of the conversation.
+            st.warning(blocked, icon=":material/shield:")
             return
         answer = answer or "I could not produce an answer. Please try rephrasing the question."
         st.markdown(answer)

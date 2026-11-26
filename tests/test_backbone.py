@@ -9,6 +9,7 @@ from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
+from fakes import FakeGuardModel
 from scanya_ae_afa_updated0209_2_5 import agent, chunking, config, library, retrieval, settings
 from scanya_ae_afa_updated0209_2_5.categories import load_categories
 from scanya_ae_afa_updated0209_2_5.embeddings import OpenRouterEmbeddings
@@ -267,7 +268,7 @@ def _run_agent(workspace, question, replies, categories=("general_building",)):
             history=[],
             workspace=workspace,
             active_category_ids=list(categories),
-            chat_model=FakeToolCallingModel(messages=iter(replies)),
+            chat_model=FakeToolCallingModel(messages=iter(replies)), guard_model=FakeGuardModel(),
             embeddings=EMBEDDINGS,
         )
     )
@@ -361,7 +362,7 @@ def test_agent_gives_the_model_top_k_passages_per_search(filled_library):
     events = list(
         agent.answer_question(
             "Frage", [], Workspace(), all_ids, top_k=2,
-            chat_model=FakeToolCallingModel(messages=iter(replies)), embeddings=EMBEDDINGS,
+            chat_model=FakeToolCallingModel(messages=iter(replies)), guard_model=FakeGuardModel(), embeddings=EMBEDDINGS,
         )
     )
     result = next(event for event in events if event.kind == "tool_result")

@@ -54,6 +54,14 @@ MAX_HISTORY_MESSAGES = 12
 # steps (the model asks, the tool answers) and the final answer one: 16 allows about 7 searches.
 MAX_AGENT_STEPS = 16
 
+# --- Guard (guard.py) ---
+# Small, cheap model that checks each question for prompt injection and scope before the
+# chosen chat model answers it. The cheapest model of the list on purpose: the check is a
+# simple yes/no, and choosing a bigger chat model should not make it more expensive.
+GUARD_MODEL = "openai/gpt-6-luna"
+# Characters of the assistant's last answer shown to the guard, so it can judge follow-ups.
+GUARD_CONTEXT_CHARS = 1_000
+
 # --- Cost estimate per model (shown under the Model select box) ---
 # Tokens of one typical answer, over all its requests to the chat model. A rough figure for
 # comparing models: an answer needs 2-3 requests, each sends the system prompt and the history
