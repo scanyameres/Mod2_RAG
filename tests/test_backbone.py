@@ -41,7 +41,9 @@ def filled_library():
     library.add_document("din_4102.txt", FIRE_STANDARD.encode(), "fire_safety", EMBEDDINGS)
 
 
-def test_categories_file_is_valid():
+def test_categories_file_is_valid(monkeypatch):
+    """The real categories.toml of the project (the other tests use tests/categories.toml)."""
+    monkeypatch.setattr(settings, "CATEGORIES_FILE", settings.PROJECT_ROOT / "categories.toml")
     categories = load_categories()
     assert len(categories) >= 2
     assert len({category.id for category in categories}) == len(categories)
@@ -190,6 +192,19 @@ def test_add_replace_and_remove_document(filled_library):
     assert len(library.list_documents()) == 2
     assert not (settings.LIBRARY_DIR / "business" / "workplaces.txt").exists()
     assert retrieval.search("lichte Höhe", ["business"], embeddings=EMBEDDINGS) == []
+
+
+def test_add_after_every_document_was_removed(filled_library):
+    """An empty index table (not a missing one) still takes new documents.
+
+    Regression: an empty LanceDB table counts as false in Python, so the store tried to
+    create the table again and every new file failed after it had been embedded.
+    """
+    for document in library.list_documents():
+        library.remove_document(document["doc_id"])
+    assert library.list_documents() == []
+    library.add_document("din_4102.txt", FIRE_STANDARD.encode(), "fire_safety", EMBEDDINGS)
+    assert len(library.list_documents()) == 1
 
 
 def test_rebuild_index_from_library_files(filled_library):

@@ -15,8 +15,21 @@ runs next:
 - a tool result hands back to the model;
 - the answer ends the run.
 
-Public: STAGE_LABELS, next_stage(), diagram_html().
+The diagram is also the key of the app's colour code (COLOURS): every step has the colour of
+the controls and views that change or show it, e.g. the Model box is blue like the model
+settings below the chat and the Search steps view. app.py tints those with the same values.
+
+Public: COLOURS, STAGE_LABELS, next_stage(), diagram_html().
 """
+
+# The colour code of the app, as "R, G, B" for see-through rgba() colours (they work in light
+# and dark mode). 47, 111, 98 is the app's primary colour #2F6F62 (.streamlit/config.toml).
+COLOURS = {
+    "knowledge": "47, 111, 98",  # Knowledge base: documents to search, hybrid search, References.
+    "model": "52, 120, 190",  # Model: model, passages and searches settings, Search steps.
+    "output": "196, 140, 60",  # Work product.
+    "neutral": "120, 120, 120",  # You, Guard, Answer: the question field and the chat.
+}
 
 # Stage id -> text of the status box in the chat while that stage runs.
 STAGE_LABELS = {
@@ -40,17 +53,20 @@ _NODES = {
     "answer": ("Answer", "chat"),
 }
 
-# The look of the diagram. Colours are see-through, so they work in light and dark mode;
-# #2F6F62 is the app's primary colour (.streamlit/config.toml).
+# Stage id -> its colour in COLOURS; the stages not listed are "neutral".
+_NODE_COLOURS = {"model": "model", "search": "knowledge", "write": "output"}
+
+# The look of the diagram. Each box gets its colour as the CSS variable --rgb (diagram_html()):
+# light at rest, stronger once done, solid and pulsing while it runs.
 _CSS = """
 <style>
 .flow { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; margin-bottom: 0.25rem; }
 .flow-node { flex: 1; min-width: 0; text-align: center; line-height: 1.15; padding: 0.3rem 0.4rem;
-  border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 0.5rem; background: rgba(128, 128, 128, 0.06);
+  border: 1px solid rgba(var(--rgb), 0.45); border-radius: 0.5rem; background: rgba(var(--rgb), 0.1);
   transition: background 0.3s, border-color 0.3s; }
 .flow-node small { display: block; opacity: 0.65; font-size: 0.68rem; }
-.flow-node.done { background: rgba(47, 111, 98, 0.14); border-color: rgba(47, 111, 98, 0.5); }
-.flow-node.active { background: #2F6F62; border-color: #2F6F62; color: #fff;
+.flow-node.done { background: rgba(var(--rgb), 0.24); border-color: rgba(var(--rgb), 0.8); }
+.flow-node.active { background: rgb(var(--rgb)); border-color: rgb(var(--rgb)); color: #fff;
   animation: flow-pulse 1.2s ease-in-out infinite; }
 .flow-node.off { opacity: 0.4; text-decoration: line-through; }
 .flow-stack { flex: 1.6; display: flex; flex-direction: column; gap: 0.15rem; }
@@ -60,8 +76,8 @@ _CSS = """
 /* In a narrow window only the titles are shown, so the boxes stay on one line. */
 @media (max-width: 1250px) { .flow-node small, .flow-stack .flow-node small { display: none; } }
 @keyframes flow-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(47, 111, 98, 0.55); }
-  50% { box-shadow: 0 0 0 0.35rem rgba(47, 111, 98, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(var(--rgb), 0.55); }
+  50% { box-shadow: 0 0 0 0.35rem rgba(var(--rgb), 0); }
 }
 </style>
 """
@@ -85,7 +101,7 @@ def next_stage(current: str, kind: str, tool: str = "") -> str:
 
 
 def diagram_html(active: str | None = None, done: set[str] = frozenset(), guard_on: bool = True) -> str:
-    """HTML of the diagram: `active` pulses, the stages in `done` are tinted, the guard is struck out if off."""
+    """HTML of the diagram: `active` pulses, the stages in `done` are tinted more, the guard is struck out if off."""
 
     def node(stage: str) -> str:
         title, subtitle = _NODES[stage]
@@ -96,7 +112,8 @@ def diagram_html(active: str | None = None, done: set[str] = frozenset(), guard_
             classes.append("done")
         if stage == "guard" and not guard_on:
             classes.append("off")
-        return f'<div class="{" ".join(classes)}"><b>{title}</b><small>{subtitle}</small></div>'
+        colour = COLOURS[_NODE_COLOURS.get(stage, "neutral")]
+        return f'<div style="--rgb: {colour}" class="{" ".join(classes)}"><b>{title}</b><small>{subtitle}</small></div>'
 
     arrow = '<span class="flow-arrow">→</span>'
     return (

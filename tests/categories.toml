@@ -1,0 +1,31 @@
+# The categories the tests use: the six of the invented documents in sample_data/, so the
+# tests do not depend on the real categories.toml (tests/conftest.py points to this file).
+[[category]]
+id = "general_building"
+name = "General building rules"
+description = "Building codes and planning law that apply to every project: distances, heights, permits, land use."
+
+[[category]]
+id = "housing"
+name = "Housing and accommodation"
+description = "Rules for dwellings, hotels, hostels and other places where people stay overnight."
+
+[[category]]
+id = "business"
+name = "Business and workplaces"
+description = "Rules for commercial premises: workplaces, shops, restaurants, places of assembly."
+
+[[category]]
+id = "fire_safety"
+name = "Fire safety"
+description = "Fire protection: building material classes, escape routes, fire walls, alarm systems."
+
+[[category]]
+id = "energy_accessibility"
+name = "Energy and accessibility"
+description = "Energy efficiency, insulation and renewable energy rules, and barrier-free design."
+
+[[category]]
+id = "local_zones"
+name = "Local zone rules"
+description = "Municipal statutes for one area (agricultural, urban growth, historic protection): permitted uses, design, materials and parking. They take precedence over the general rules on these points."

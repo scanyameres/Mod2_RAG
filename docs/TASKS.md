@@ -30,7 +30,7 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - [x] 3.1 Choose a specific domain or use case.
   - Architecture and building regulations: find the rules that apply to a building project.
 - [~] 3.2 Create a focused knowledge base.
-  - Done: six document types in `categories.toml` (placeholders), switchable per conversation; 13 invented sample documents for them in `sample_data/`. Missing: the real documents and the final list of types.
+  - Done: three document types in `categories.toml` (`cte`, `gencat`, `poum_terrassa`), switchable per conversation; the real documents are in `data/library/` (16 PDF). The 13 invented sample documents stay in `sample_data/`, with their six types in `tests/categories.toml`. Missing: indexing the real documents.
 - [x] 3.3 Implement domain-specific prompts and responses.
   - `prompts.SYSTEM_PROMPT`: answer only from the documents, quote values and article references exactly, cite passages as `[n]`, name document and page when asked for the origin, use the project input, write documents with the tool, "not legal advice" note.
 - [~] 3.4 Add relevant security measures for the domain.
@@ -48,7 +48,7 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 ### 5. User interface
 
 - [x] 5.1 Create an intuitive interface using Streamlit or Next.js.
-  - Streamlit. Assistant page (`page_chat.py`) in three areas filling the window: sidebar with Project input and Documents to search; centre with the Chat, the per-chat settings (model, passages, searches), the cost line and the question field; right with the Output (work product, references or search steps, switched with buttons below the box that get a green dot when a view has new content) and a flow diagram of the answer steps (`flow_diagram.py`, the running step pulses). Knowledge base as a second page (`page_library.py`).
+  - Streamlit. Assistant page (`page_chat.py`) in three areas filling the window: sidebar with Project input and Documents to search; centre with the Chat, the question field, the per-chat settings (model, passages, searches) and the cost line; right with the Output (work product, references or search steps, switched with buttons below the box that get a green dot when a view has new content) and a flow diagram of the answer steps (`flow_diagram.py`, the running step pulses; its colours mark which controls and views belong to which step). Knowledge base as a second page (`page_library.py`).
 - [x] 5.2 Show relevant context and sources.
   - Below each answer: the cited passages with document, section, page, document type, how they were found, and the exact text. Output section: References tab with every passage of the conversation; Search steps tab with all passages the model was given for each search, best first, with their match values (`page_chat._passage_list()`).
 - [x] 5.3 Display tool call results.
@@ -106,4 +106,4 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - Command-line build tool (`build_index.py`, `build_index.bat`): updates the index from `data/library/` (`library.sync_index()`: new files embedded, deleted files dropped) or rebuilds it (`--rebuild`); both ask first and show the estimated embedding cost. The Rebuild button of the Knowledge base page asks as well.
 - Login, history and costs reuse the Sprint 1 modules `auth.py`, `user_store.py` and `pricing.py`, adapted to conversations and to the LangChain agent.
 - `docs/Architecture.md` summarises the components and decisions; all documentation except `README.md` and `CLAUDE.md` is in `docs/`.
-- Open: decide the real document types and documents (the committed library holds the invented `sample_data/` documents).
+- Open: index the real documents (`data/library/`) and check that they may be committed (the committed index still holds the invented `sample_data/` documents).

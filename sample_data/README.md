@@ -6,7 +6,7 @@ Each sub-folder is a document type (the ids of `categories.toml`).
 
 ## Load it
 
-Either upload the files on the **Knowledge base** page, type by type, or copy everything and rebuild:
+These six types are not the app's categories any more (they are kept in `tests/categories.toml` for the tests). To use the samples in the app again, first copy `tests/categories.toml` over `categories.toml`. Then either upload the files on the **Knowledge base** page, type by type, or copy everything and rebuild:
 
 ```bat
 xcopy sample_data data\library /E /I /Y

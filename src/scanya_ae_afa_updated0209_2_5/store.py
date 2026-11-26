@@ -91,7 +91,10 @@ def add_chunks(rows: list[dict]) -> None:
     """
     if not rows:
         return
-    table = _open_table() or _create_table(vector_size=len(rows[0]["vector"]))
+    table = _open_table()
+    # "is None", not "or": an empty table (all documents removed) counts as false in Python.
+    if table is None:
+        table = _create_table(vector_size=len(rows[0]["vector"]))
     table.add(rows)
     # Merge the new rows into the keyword index. (They are searchable before this, too;
     # optimising keeps searches fast as the table grows.)

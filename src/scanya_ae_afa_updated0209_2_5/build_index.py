@@ -28,6 +28,7 @@ def main(arguments: list[str] | None = None) -> None:
     options = parser.parse_args(arguments)
 
     # 1. Say what will happen.
+    print("Reviewing the changes to the index...")
     if options.rebuild:
         to_embed, removed = library.library_files(), []
         print(f"Rebuild: the index is deleted and all {len(to_embed)} file(s) are embedded again.")
@@ -40,6 +41,8 @@ def main(arguments: list[str] | None = None) -> None:
             print(f"  new:     {category_id} / {path.name}")
         for document in removed:
             print(f"  deleted: {document['category']} / {document['source']}")
+    
+    print("\nEstimating cost of embedding the changes...")
     tokens = library.estimate_tokens(to_embed)
     estimate = pricing.format_usd(pricing.embedding_cost(tokens), markdown=False)
     print(f"To embed: {len(to_embed)} file(s), about {tokens:,} tokens, about {estimate}.")
@@ -50,6 +53,7 @@ def main(arguments: list[str] | None = None) -> None:
         return
 
     # 3. Do it, and report.
+    print("\nUpdating the index... \n")
     embeddings = get_embeddings()  # Notes its requests, for the cost printed at the end.
     if options.rebuild:
         added, problems = library.rebuild_index(embeddings)

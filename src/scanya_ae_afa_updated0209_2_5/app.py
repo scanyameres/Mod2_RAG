@@ -25,7 +25,7 @@ SRC_DIR = str(Path(__file__).resolve().parents[1])
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from scanya_ae_afa_updated0209_2_5 import auth, page_chat, page_history, page_library  # noqa: E402
+from scanya_ae_afa_updated0209_2_5 import auth, flow_diagram, page_chat, page_history, page_library  # noqa: E402
 
 st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/architecture:", layout="wide")
 
@@ -35,22 +35,25 @@ st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/a
 # 2. The chat and output boxes (containers with these keys in page_chat.py) fill the window
 #    height, so chat and work product stay side by side without scrolling the page. Both have
 #    the same height, so their tops and bottoms line up; below them there is room for the
-#    chat settings, the cost line and the question field (left) and the flow diagram (right).
+#    question field, the chat settings and the cost line (left) and the flow diagram (right).
 #    Streamlit gives a fixed-height container both "height" and "flex", so both are replaced.
 # 3. A denser sidebar, so it fits on one screen: a lower header (the strip with the collapse
 #    button), a little less space between elements, around the dividers and above the subheadings.
-# 4. A light tint per area: sidebar (project) and chat in the app's green, output warm. The
-#    tints are see-through layers over Streamlit's own background, so dark mode still works.
+# 4. The colour code (flow_diagram.COLOURS): each control and view has the colour of the step
+#    of the flow diagram it changes or shows. Green = knowledge base (Documents to search,
+#    References), blue = model (the settings below the chat, Search steps), orange = work
+#    product; the chat is neutral grey, like You and Answer. The output view buttons take the
+#    colour of their view. The tints are see-through, so dark mode still works.
 # 5. The page links at the top start where the main content starts ("Assistant" above "Chat").
 # 6. No row of min/max numbers below the chat's sliders: the range is in their labels (page_chat.py).
 # 7. In a narrow window the output view buttons lose their icons and get smaller, so they fit on one row.
-BOX_HEIGHT = "calc(100vh - 26.75rem)"  # Chat box and output boxes.
+BOX_HEIGHT = "calc(100vh - 27.5rem)"  # Chat box and output boxes.
 BOX_MIN_HEIGHT = "12rem"  # In a low window the page scrolls rather than squeezing the boxes further.
 SIDE_PADDING = "2rem"
 NAV_INDENT = "1rem"  # SIDE_PADDING minus the header's own padding (1rem), measured.
-SIDEBAR_TINT = "rgba(47, 111, 98, 0.07)"  # 47, 111, 98 = primaryColor #2F6F62 (.streamlit/config.toml)
-CHAT_TINT = "rgba(47, 111, 98, 0.035)"
-OUTPUT_TINT = "rgba(196, 140, 60, 0.05)"
+KNOWLEDGE, MODEL, OUTPUT, NEUTRAL = (
+    flow_diagram.COLOURS[name] for name in ("knowledge", "model", "output", "neutral")
+)
 st.html(
     f"""
     <style>
@@ -64,9 +67,19 @@ st.html(
     [data-testid='stSidebarUserContent'] [data-testid='stVerticalBlock'] {{ gap: 0.6rem; }}
     [data-testid='stSidebarUserContent'] hr {{ margin: 0.75rem 0; }}
     [data-testid='stSidebarUserContent'] h3 {{ padding: 0.25rem 0 0.6rem 0; }}
-    [data-testid='stSidebar'] {{ background-image: linear-gradient({SIDEBAR_TINT}, {SIDEBAR_TINT}); }}
-    .st-key-chat_box {{ background: {CHAT_TINT}; }}
-    .st-key-document_box, .st-key-references_box, .st-key-steps_box {{ background: {OUTPUT_TINT}; }}
+    .st-key-documents_to_search {{ background: rgba({KNOWLEDGE}, 0.08); border-radius: 0.5rem; padding: 0.5rem 0.75rem; }}
+    .st-key-chat_box {{ background: rgba({NEUTRAL}, 0.035); }}
+    .st-key-chat_settings {{ background: rgba({MODEL}, 0.08); border-radius: 0.5rem; padding: 0.3rem 0.75rem; }}
+    .st-key-document_box {{ background: rgba({OUTPUT}, 0.06); }}
+    .st-key-references_box {{ background: rgba({KNOWLEDGE}, 0.06); }}
+    .st-key-steps_box {{ background: rgba({MODEL}, 0.06); }}
+    .st-key-output_view button:nth-of-type(1) {{ --rgb: {OUTPUT}; }}
+    .st-key-output_view button:nth-of-type(2) {{ --rgb: {KNOWLEDGE}; }}
+    .st-key-output_view button:nth-of-type(3) {{ --rgb: {MODEL}; }}
+    .st-key-output_view button {{ background: rgba(var(--rgb), 0.08) !important;
+        border-color: rgba(var(--rgb), 0.4) !important; color: inherit !important; }}
+    .st-key-output_view button[kind='segmented_controlActive'] {{ background: rgba(var(--rgb), 0.26) !important;
+        border-color: rgb(var(--rgb)) !important; font-weight: 600; }}
     [data-testid='stTopNav'] {{ margin-left: {NAV_INDENT}; }}
     .st-key-chat_settings [data-testid='stSliderTickBar'] {{ display: none; }}
     @media (max-width: 1250px) {{

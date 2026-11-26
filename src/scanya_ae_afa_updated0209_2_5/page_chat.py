@@ -3,14 +3,18 @@
 - Sidebar, what belongs to the project (below the login box of app.py): the project input
   (the user's own files and notes) and the documents to search (document types, hybrid
   search on/off).
-- Centre, the interaction: the chat (every answer lists its references), then the settings a
-  user changes from chat to chat (model, passages per search, searches per answer), a cost
-  line (this chat, spent / max of the spending limit, details) and the question field.
+- Centre, the interaction: the chat (every answer lists its references), the question field,
+  then the settings a user changes from chat to chat (model, passages per search, searches per
+  answer) and a cost line (this chat, spent / max of the spending limit, details).
 - Right, the result: the work product the assistant writes, all references of the
   conversation or the search steps of each answer (what was searched, which passages the
   model was given and how well they matched), in a box as high as the chat box; below it the
   buttons to switch between these three (a green dot = new content) and a flow diagram of
   the answer steps (flow_diagram.py; the running step pulses).
+
+Colours (set in app.py, key in flow_diagram.COLOURS): what belongs to a step of the flow
+diagram has that step's colour: green = knowledge base (Documents to search, References),
+blue = model (the settings below the question field, Search steps), orange = work product.
 
 Every user can change the settings for their own conversation; a new conversation starts
 with the defaults the admin saved (app_settings.py).
@@ -297,6 +301,14 @@ def _documents_section(categories: list[Category]) -> None:
     state = st.session_state
     documents_per_category = Counter(document["category"] for document in library.list_documents())
 
+    # The key gives the box the colour of the knowledge base (app.py).
+    with st.container(key="documents_to_search"):
+        _documents_widgets(categories, documents_per_category)
+
+
+def _documents_widgets(categories: list[Category], documents_per_category: Counter) -> None:
+    """Content of the Documents to search box: a switch per document type, then hybrid search."""
+    state = st.session_state
     st.subheader("Documents to search")
     active_ids = []
     for category in categories:
@@ -310,6 +322,8 @@ def _documents_section(categories: list[Category]) -> None:
             active_ids.append(category.id)
     state["active_categories"] = active_ids
 
+    # Set apart, so it is not read as one more document type.
+    st.caption("Search method")
     state["hybrid"] = st.toggle(
         "Hybrid search",
         value=state["hybrid"],
@@ -338,12 +352,13 @@ def _model_labels() -> dict[str, str]:
 
 
 def _chat_settings_row() -> None:
-    """Model, passages per search and searches per answer, in one row below the chat.
+    """Model, passages per search and searches per answer, in one row below the question field.
 
     Here and not in the sidebar, because they are what a user changes from chat to chat.
     """
     state = st.session_state
-    # The key lets app.py hide the min/max numbers below these sliders (the range is in the label).
+    # The key lets app.py colour the row (blue, like the Model step) and hide the min/max
+    # numbers below these sliders (the range is in the label).
     model_column, top_k_column, searches_column = st.container(key="chat_settings").columns([4, 3, 3])
     labels = _model_labels()
     state["model_name"] = model_column.selectbox(
@@ -570,7 +585,7 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
 
 
 def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict, flow_area):
-    """The conversation in a scrolling box; below it the chat settings, the cost line and the question field.
+    """The conversation in a scrolling box; below it the question field, the chat settings and the cost line.
 
     `rules`: the app settings (app_settings.load()), for the spending limit and the guard.
     `flow_area`: placeholder of the flow diagram (see _answer()).
@@ -609,13 +624,14 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
                 else:
                     st.markdown(message["content"])
 
+    # st.chat_input returns the text once, when the user sends it. Inside a column it is drawn
+    # here, below the chat box. Taller than one line, so longer questions are readable while typing.
+    question = st.chat_input("Ask about the rules for your project", height=CHAT_INPUT_HEIGHT)
+    # Drawn before the question is answered, so the answer uses the settings shown.
     _chat_settings_row()
     # Reserved now, filled at the end: the costs are only known after the answer has run.
     costs_area = st.empty()
 
-    # st.chat_input returns the text once, when the user sends it.
-    # Taller than one line, so longer questions are readable while typing.
-    question = st.chat_input("Ask about the rules for your project", height=CHAT_INPUT_HEIGHT)
     if question:
         with box:
             problem = agent.validate_question(question)
@@ -691,17 +707,18 @@ def _show_search_steps(question: str, message: dict, workspace: Workspace, categ
     if any(step["tool"] == "write_document" for step in steps):
         cited |= set(citation_numbers(workspace.document))
 
-    # The path in one line, e.g. Question → Search 1 → Search 2 → Answer.
+    # The path in one line, e.g. Question → Search 1 → Search 2 → Answer, in the colours of the
+    # flow diagram: knowledge base = primary (green), work product = orange, the rest grey.
     path, searches = [":gray-badge[:material/help: Question]"], 0
     for step in steps:
         if step["kind"] == "tool_call" and step["tool"] == "search_documentation":
             searches += 1
-            path.append(f":blue-badge[:material/search: Search {searches}]")
+            path.append(f":primary-badge[:material/search: Search {searches}]")
         elif step["kind"] == "tool_call" and step["tool"] == "read_passages":
-            path.append(":violet-badge[:material/menu_book: Re-read]")
+            path.append(":primary-badge[:material/menu_book: Re-read]")
         elif step["kind"] == "tool_call":
             path.append(":orange-badge[:material/edit_document: Write]")
-    path.append(":green-badge[:material/chat: Answer]")
+    path.append(":gray-badge[:material/chat: Answer]")
     st.markdown(" → ".join(path))
     st.caption(f"**Question:** {question}")
     if "settings" in message:  # Answers saved before the settings were recorded have none.
