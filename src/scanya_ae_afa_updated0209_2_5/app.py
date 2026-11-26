@@ -29,24 +29,50 @@ from scanya_ae_afa_updated0209_2_5 import auth, page_chat, page_history, page_li
 
 st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/architecture:", layout="wide")
 
-# The only custom CSS of the app:
-# 1. Less empty space above the content.
+# The custom CSS of the app (the flow diagram has its own, in flow_diagram.py):
+# 1. Less empty space above and beside the content (Streamlit's 5rem side padding made the
+#    columns too narrow in smaller windows).
 # 2. The chat and output boxes (containers with these keys in page_chat.py) fill the window
-#    height, so chat and work product stay side by side without scrolling the page. The chat
-#    box is shorter than the output boxes, so the (taller) question field sits higher up.
+#    height, so chat and work product stay side by side without scrolling the page. Both have
+#    the same height, so their tops and bottoms line up; below them there is room for the
+#    chat settings, the cost line and the question field (left) and the flow diagram (right).
 #    Streamlit gives a fixed-height container both "height" and "flex", so both are replaced.
-CHAT_BOX_HEIGHT = "calc(100vh - 21rem)"
-OUTPUT_BOX_HEIGHT = "calc(100vh - 14rem)"
+# 3. A denser sidebar, so it fits on one screen: a lower header (the strip with the collapse
+#    button), a little less space between elements, around the dividers and above the subheadings.
+# 4. A light tint per area: sidebar (project) and chat in the app's green, output warm. The
+#    tints are see-through layers over Streamlit's own background, so dark mode still works.
+# 5. The page links at the top start where the main content starts ("Assistant" above "Chat").
+# 6. No row of min/max numbers below the chat's sliders: the range is in their labels (page_chat.py).
+# 7. In a narrow window the output view buttons lose their icons and get smaller, so they fit on one row.
+BOX_HEIGHT = "calc(100vh - 26.75rem)"  # Chat box and output boxes.
+BOX_MIN_HEIGHT = "12rem"  # In a low window the page scrolls rather than squeezing the boxes further.
+SIDE_PADDING = "2rem"
+NAV_INDENT = "1rem"  # SIDE_PADDING minus the header's own padding (1rem), measured.
+SIDEBAR_TINT = "rgba(47, 111, 98, 0.07)"  # 47, 111, 98 = primaryColor #2F6F62 (.streamlit/config.toml)
+CHAT_TINT = "rgba(47, 111, 98, 0.035)"
+OUTPUT_TINT = "rgba(196, 140, 60, 0.05)"
 st.html(
     f"""
     <style>
-    [data-testid='stMainBlockContainer'] {{ padding-top: 3.5rem; padding-bottom: 1rem; }}
-    [data-testid='stLayoutWrapper']:has(> .st-key-chat_box) {{
-        height: {CHAT_BOX_HEIGHT} !important; flex: 0 0 {CHAT_BOX_HEIGHT} !important; min-height: 20rem; }}
+    [data-testid='stMainBlockContainer'] {{ padding: 3.5rem {SIDE_PADDING} 1rem {SIDE_PADDING}; }}
+    [data-testid='stLayoutWrapper']:has(> .st-key-chat_box),
     [data-testid='stLayoutWrapper']:has(> .st-key-document_box),
     [data-testid='stLayoutWrapper']:has(> .st-key-references_box),
     [data-testid='stLayoutWrapper']:has(> .st-key-steps_box) {{
-        height: {OUTPUT_BOX_HEIGHT} !important; flex: 0 0 {OUTPUT_BOX_HEIGHT} !important; min-height: 20rem; }}
+        height: {BOX_HEIGHT} !important; flex: 0 0 {BOX_HEIGHT} !important; min-height: {BOX_MIN_HEIGHT}; }}
+    [data-testid='stSidebarHeader'] {{ height: 2rem; min-height: 2rem; margin-bottom: 0; padding-top: 0.25rem; }}
+    [data-testid='stSidebarUserContent'] [data-testid='stVerticalBlock'] {{ gap: 0.6rem; }}
+    [data-testid='stSidebarUserContent'] hr {{ margin: 0.75rem 0; }}
+    [data-testid='stSidebarUserContent'] h3 {{ padding: 0.25rem 0 0.6rem 0; }}
+    [data-testid='stSidebar'] {{ background-image: linear-gradient({SIDEBAR_TINT}, {SIDEBAR_TINT}); }}
+    .st-key-chat_box {{ background: {CHAT_TINT}; }}
+    .st-key-document_box, .st-key-references_box, .st-key-steps_box {{ background: {OUTPUT_TINT}; }}
+    [data-testid='stTopNav'] {{ margin-left: {NAV_INDENT}; }}
+    .st-key-chat_settings [data-testid='stSliderTickBar'] {{ display: none; }}
+    @media (max-width: 1250px) {{
+        .st-key-output_view button span:has(> [data-testid='stIconMaterial']) {{ display: none; }}
+        .st-key-output_view button {{ padding: 0 0.4rem !important; }}
+        .st-key-output_view button p {{ font-size: 0.8rem; }} }}
     </style>
     """
 )

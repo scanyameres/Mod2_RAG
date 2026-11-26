@@ -1,7 +1,7 @@
 """App-wide settings that the admin saves in the app (no Streamlit code).
 
 Two kinds of values, all in one small JSON file (settings.APP_SETTINGS_FILE):
-- defaults of the Settings section of the Assistant page: document types switched on, hybrid
+- defaults of the conversation settings of the Assistant page: document types switched on, hybrid
   search, passages per search, searches per answer, model. Every new conversation starts with
   them; any user can change them for their own conversation, but only the admin can save them
   as the new defaults (Knowledge base page);
@@ -30,7 +30,7 @@ BACKUP_PATH = "settings/app_settings.json"
 
 # The keys of the dict returned by load() and accepted by save().
 KEYS = ("active_categories", "hybrid", "top_k", "max_searches", "model_name", "guard_enabled", "spending_limit_usd")
-# The keys that are also settings of one conversation (Settings section of the Assistant page),
+# The keys that are also settings of one conversation (sidebar and chat of the Assistant page),
 # saved with every conversation and answer.
 SEARCH_KEYS = ("active_categories", "hybrid", "top_k", "max_searches", "model_name")
 

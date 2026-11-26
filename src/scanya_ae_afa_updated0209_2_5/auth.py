@@ -133,6 +133,7 @@ def login_area() -> str | None:
                     st.success(f"Account **{new_username}** created. You can now log in.")
             except Exception as error:  # e.g. username taken, passwords don't match
                 st.error(str(error))
+    st.caption("Log in to save your conversations and keep a total cost.")
     if st.session_state.get("authentication_status"):
         time.sleep(COOKIE_WAIT_SECONDS)
         st.rerun()  # just logged in: redraw with the "signed in" line

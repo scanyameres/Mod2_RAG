@@ -10,5 +10,5 @@ primaryColor = "#2F6F62"
 maxUploadSize = 25
 
 [theme.sidebar]
-# Less empty space above the first sidebar element (the login box).
-paddingTop = "0.5rem"
+# No empty space above the first sidebar element (the login box); see also the CSS in app.py.
+paddingTop = "0rem"

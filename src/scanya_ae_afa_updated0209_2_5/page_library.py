@@ -4,7 +4,7 @@ Everyone sees the list of documents. Only the admin (auth.is_admin()) sees the r
 it changes the app for all users:
 - upload documents (a file with the name of an existing one replaces it), remove documents,
   rebuild the index;
-- App settings: the defaults of the Settings section and the app rules (spending limit,
+- App settings: the defaults of the conversation settings and the app rules (spending limit,
   guard), saved permanently (app_settings.py).
 
 All the work is done by library.py and app_settings.py; this file only draws the page.
@@ -147,7 +147,7 @@ def _maintenance_section() -> None:
 
 
 def _app_settings_section(categories: list[Category]) -> None:
-    """Admin form: the defaults of the Settings section and the app rules, saved for everyone."""
+    """Admin form: the defaults of the conversation settings and the app rules, saved for everyone."""
     current = app_settings.load()
     with st.expander("App settings", icon=":material/admin_panel_settings:"):
         st.caption(
@@ -155,7 +155,7 @@ def _app_settings_section(categories: list[Category]) -> None:
             "conversation; new conversations start with these."
         )
         with st.form("app_settings", border=False):
-            st.markdown("**Defaults of the Settings section**")
+            st.markdown("**Defaults for new conversations**")
             active = st.multiselect(
                 "Document types switched on",
                 [category.id for category in categories],

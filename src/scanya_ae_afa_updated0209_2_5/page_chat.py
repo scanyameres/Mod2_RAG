@@ -1,14 +1,19 @@
-"""Assistant page, the main page of the app. Five sections:
+"""Assistant page, the main page of the app. Three areas:
 
-- Project input (sidebar): the user's own files and notes about the project.
-- Settings (sidebar): document types to search, hybrid search on/off, passages per search,
-  searches per answer, chat model. Every user can change them for their own conversation; a
-  new conversation starts with the defaults the admin saved (app_settings.py).
-- Costs (sidebar): estimated cost of this chat per model, and the logged-in user's total.
-- Chat (left): the conversation; every answer lists its references.
-- Output (right): the work product the assistant writes, all references of the conversation,
-  and the search steps of each answer (what was searched, which passages the model was given
-  and how well they matched).
+- Sidebar, what belongs to the project (below the login box of app.py): the project input
+  (the user's own files and notes) and the documents to search (document types, hybrid
+  search on/off).
+- Centre, the interaction: the chat (every answer lists its references), then the settings a
+  user changes from chat to chat (model, passages per search, searches per answer), a cost
+  line (this chat, spent / max of the spending limit, details) and the question field.
+- Right, the result: the work product the assistant writes, all references of the
+  conversation or the search steps of each answer (what was searched, which passages the
+  model was given and how well they matched), in a box as high as the chat box; below it the
+  buttons to switch between these three (a green dot = new content) and a flow diagram of
+  the answer steps (flow_diagram.py; the running step pulses).
+
+Every user can change the settings for their own conversation; a new conversation starts
+with the defaults the admin saved (app_settings.py).
 
 For a logged-in user (auth.py) the conversation is saved after every answer (user_store.py)
 and can be opened again from the My history page (open_conversation()).
@@ -26,6 +31,8 @@ runs is kept in st.session_state:
 - "owner": the user who was logged in when the page was last drawn (None = nobody);
 - "conversation": a counter, increased whenever another conversation is shown;
 - "upload_round": a counter that empties the project file uploader after each upload;
+- "output_view", "output_seen": the view shown in the output box, and what each view held
+  when it was last shown (for the green dots, see _output_section());
 - "session_cost": cost of the earlier conversations of this browser session (for the spending
   limit of a user who is not logged in, see _spent()).
 """
@@ -37,21 +44,38 @@ from dataclasses import asdict
 
 import streamlit as st
 
-from scanya_ae_afa_updated0209_2_5 import agent, app_settings, auth, chunking, library, pricing, settings, user_store
+from scanya_ae_afa_updated0209_2_5 import (
+    agent,
+    app_settings,
+    auth,
+    chunking,
+    flow_diagram,
+    library,
+    pricing,
+    settings,
+    user_store,
+)
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace, citation_numbers
 
 # Height of the chat and output boxes in pixels. A CSS rule in app.py stretches both to the
 # window height; this value is the fallback.
 BOX_HEIGHT = 560
-# Minimum height of the question field in pixels (about four lines; it grows with the text).
-CHAT_INPUT_HEIGHT = 120
+# Minimum height of the question field in pixels (about three lines; it grows with the text).
+CHAT_INPUT_HEIGHT = 96
 
 EXAMPLE_REQUESTS = (
     "Which rules apply to the project described in my files?",
     "Write a checklist of the fire-safety requirements for this project.",
     "Where does the minimum distance to the plot boundary come from?",
 )
+
+# The views of the output box: id -> (icon, name on its button).
+OUTPUT_VIEWS = {
+    "document": (":material/description:", "Work product"),
+    "references": (":material/menu_book:", "References"),
+    "steps": (":material/account_tree:", "Search steps"),
+}
 
 # A saved conversation is listed in the history under its first question, cut to this length.
 TITLE_LENGTH = 80
@@ -101,7 +125,7 @@ def _new_conversation(categories: list[Category]) -> None:
 
 
 def _current_settings() -> dict:
-    """The settings of the Settings section as a plain dict (saved with answers and conversations)."""
+    """The settings of this conversation as a plain dict (saved with answers and conversations)."""
     state = st.session_state
     current = {key: state[key] for key in app_settings.SEARCH_KEYS}
     current["active_categories"] = list(current["active_categories"])  # A copy, not the list in the session.
@@ -210,15 +234,17 @@ def _project_input_section(workspace: Workspace) -> None:
     while its title changes (after an upload).
     """
     state = st.session_state
-    with st.expander(_project_input_label(workspace), icon=":material/folder_open:", key=f"project_input_{state['conversation']}"):
+    with st.expander(
+        _project_input_label(workspace),
+        icon=":material/folder_open:",
+        key=f"project_input_{state['conversation']}",
+    ):
         _project_input_widgets(workspace)
 
 
 def _project_input_widgets(workspace: Workspace) -> None:
     """Content of the project input box: uploader, list of attached files, notes."""
     state = st.session_state
-    st.caption("Drafts, requirement lists or notes about your project. The assistant reads them "
-               "with every question. They are not added to the knowledge base.")
     uploader_key = f"project_upload_{state['upload_round']}"
     st.file_uploader(
         "Project files",
@@ -227,7 +253,8 @@ def _project_input_widgets(workspace: Workspace) -> None:
         key=uploader_key,
         on_change=_attach_project_files,
         args=(uploader_key,),
-        label_visibility="collapsed",
+        help="Drafts, requirement lists or notes about your project. The assistant reads them "
+        "with every question. They are not added to the knowledge base.",
     )
     for problem in state.pop("upload_problems", []):
         st.warning(problem, icon=":material/warning:")
@@ -257,25 +284,11 @@ def _project_input_widgets(workspace: Workspace) -> None:
         )
 
 
-# --- Sidebar: settings ---
+# --- Sidebar: documents to search ---
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def _model_cost_lines() -> list[str]:
-    """One line per selectable model with the estimated cost of one answer.
-
-    Kept for an hour (st.cache_data), so the price list is not requested on every redraw,
-    also not when it cannot be reached.
-    """
-    lines = []
-    for model in settings.CHAT_MODELS:
-        cost = pricing.estimate_answer_cost(model)
-        lines.append(f"{model}: {pricing.format_usd(cost) if cost is not None else 'no price found'}")
-    return lines
-
-
-def _settings_section(categories: list[Category]) -> None:
-    """Sidebar section with the search settings; stores the choices in st.session_state.
+def _documents_section(categories: list[Category]) -> None:
+    """Sidebar section: which document types are searched, and how (hybrid search on/off).
 
     The choices are kept in the session state, not only in the widgets: Streamlit forgets a
     widget's value when another page is opened, and the settings must survive a visit to the
@@ -284,8 +297,7 @@ def _settings_section(categories: list[Category]) -> None:
     state = st.session_state
     documents_per_category = Counter(document["category"] for document in library.list_documents())
 
-    st.subheader("Settings")
-    st.caption("Document types to search")
+    st.subheader("Documents to search")
     active_ids = []
     for category in categories:
         switched_on = st.toggle(
@@ -298,7 +310,6 @@ def _settings_section(categories: list[Category]) -> None:
             active_ids.append(category.id)
     state["active_categories"] = active_ids
 
-    st.caption("Search method")
     state["hybrid"] = st.toggle(
         "Hybrid search",
         value=state["hybrid"],
@@ -306,56 +317,86 @@ def _settings_section(categories: list[Category]) -> None:
         help="On: search by meaning and by exact words (article numbers, standards, values). "
         "Off: search by meaning only.",
     )
-    state["top_k"] = st.slider(
-        "Passages per search",
+
+
+# --- Chat: model and search settings, costs ---
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _model_labels() -> dict[str, str]:
+    """Model id -> label for the model list, with the estimated cost of one typical answer.
+
+    Kept for an hour (st.cache_data), so the price list is not requested on every redraw,
+    also not when it cannot be reached.
+    """
+    labels = {}
+    for model in settings.CHAT_MODELS:
+        cost = pricing.estimate_answer_cost(model)
+        price = f"~{pricing.format_usd(cost, markdown=False)}" if cost is not None else "no price"
+        labels[model] = f"{model.split('/')[-1]} · {price}"  # Without the provider, to fit the box.
+    return labels
+
+
+def _chat_settings_row() -> None:
+    """Model, passages per search and searches per answer, in one row below the chat.
+
+    Here and not in the sidebar, because they are what a user changes from chat to chat.
+    """
+    state = st.session_state
+    # The key lets app.py hide the min/max numbers below these sliders (the range is in the label).
+    model_column, top_k_column, searches_column = st.container(key="chat_settings").columns([4, 3, 3])
+    labels = _model_labels()
+    state["model_name"] = model_column.selectbox(
+        "Model",
+        settings.CHAT_MODELS,
+        index=settings.CHAT_MODELS.index(state["model_name"]),
+        format_func=lambda model: labels[model],
+        help="With each model: what one typical answer would cost at OpenRouter's prices. "
+        f"Typical means about {settings.TYPICAL_ANSWER_INPUT_TOKENS:,} input and "
+        f"{settings.TYPICAL_ANSWER_OUTPUT_TOKENS:,} output tokens over all requests of the answer. "
+        "What this chat really cost is in the line below.",
+    )
+    state["top_k"] = top_k_column.slider(
+        f"Passages (1–{settings.TOP_K_MAX})",  # Short, so the label fits on one line.
         min_value=1,
         max_value=settings.TOP_K_MAX,
         value=state["top_k"],
         key=f"top_k_{state['conversation']}",
-        help="How many passages the assistant is given each time it searches. More passages can "
+        help="Passages per search: how many passages the assistant is given each time it searches. More passages can "
         "catch a rule that would be missed, but cost more tokens and can distract the model. "
         "The Search steps tab shows the passages of every search.",
     )
-    state["max_searches"] = st.slider(
-        "Searches per answer",
+    state["max_searches"] = searches_column.slider(
+        f"Searches (1–{settings.MAX_SEARCHES_MAX})",
         min_value=1,
         max_value=settings.MAX_SEARCHES_MAX,
         value=state["max_searches"],
         key=f"max_searches_{state['conversation']}",
-        help="How often the assistant may search for one answer. After reading the passages of a "
+        help="Searches per answer: how often the assistant may search for one answer. After reading the passages of a "
         "search it can search again (other words, an article the passages refer to). More "
         "searches can find more, but every search is one more request to the model. "
         "Re-reading passages found earlier in the chat does not count as a search.",
     )
-    state["model_name"] = st.selectbox(
-        "Model",
-        settings.CHAT_MODELS,
-        index=settings.CHAT_MODELS.index(state["model_name"]),
-        help="Below: what one typical answer would cost with each model, at OpenRouter's prices. "
-        f"Typical means about {settings.TYPICAL_ANSWER_INPUT_TOKENS:,} input and "
-        f"{settings.TYPICAL_ANSWER_OUTPUT_TOKENS:,} output tokens over all requests of the answer. "
-        "What this chat really cost is in the Costs section.",
-    )
-    st.caption("Estimated cost per answer  \n" + "  \n".join(_model_cost_lines()))
 
 
-# --- Sidebar: costs ---
+def _costs_row(username: str | None, limit: float) -> None:
+    """One line below the chat: cost of this chat, what the user spent of the limit, and a popover with the details.
 
-
-def _costs_section(username: str | None, limit: float) -> None:
-    """Sidebar section with the estimated cost of this chat, the user's total and the limit (USD)."""
+    The limit counts all of the user's conversations (see _spent()), so "spent" can be more
+    than this chat.
+    """
     usage = st.session_state["usage"]
-    st.subheader(
-        "Costs",
-        help="Estimate in US dollars. Every request to a chat model is counted with the price of "
-        "the model that answered it: the cost OpenRouter reports, or else tokens × the model's "
-        "price per token. The embedding of each search query is counted too, under the embedding model.",
+    text_column, details_column = st.columns([9, 1], vertical_alignment="center")
+    text_column.caption(
+        f"This chat: **{pricing.format_usd(pricing.total_cost(usage))}** · {pricing.total_tokens(usage):,} tokens"
+        f" · Spent: **{pricing.format_usd(_spent(username))}** / max {pricing.format_usd(limit)}"
     )
-    if not usage:
-        st.caption("This chat: no requests yet.")
-    else:
-        st.markdown(
-            f"This chat: **{pricing.format_usd(pricing.total_cost(usage))}** · {pricing.total_tokens(usage):,} tokens"
+    # Tertiary = an icon without a frame, so the line stays as low as its text.
+    with details_column.popover("", icon=":material/receipt_long:", help="Cost details", type="tertiary"):
+        st.caption(
+            "Estimate in US dollars. Every request to a chat model is counted with the price of "
+            "the model that answered it: the cost OpenRouter reports, or else tokens × the model's "
+            "price per token. The embedding of each search query is counted too, under the embedding model."
         )
         for model, totals in usage.items():
             st.caption(
@@ -365,15 +406,9 @@ def _costs_section(username: str | None, limit: float) -> None:
         unpriced = sum(totals["unpriced"] for totals in usage.values())
         if unpriced:
             st.caption(f":material/warning: {unpriced} request(s) not included: no price found.")
-    if username:
-        st.markdown(f"Your total: **{pricing.format_usd(user_store.total_cost(username))}**")
-        st.caption("All conversations in *My history*.")
-    else:
-        st.caption("Log in to save your conversations and keep a total.")
-    st.progress(
-        min(_spent(username) / limit, 1.0) if limit else 1.0,
-        text=f"Spending limit: {pricing.format_usd(_spent(username))} of {pricing.format_usd(limit)} used",
-    )
+        if username:
+            st.markdown(f"Your total: **{pricing.format_usd(user_store.total_cost(username))}**")
+            st.caption("All conversations in *My history*.")
 
 
 # --- References (used by the chat and the output section) ---
@@ -450,10 +485,11 @@ def _error_text(error: Exception) -> str:
     return f"Sorry, the answer could not be generated: {error}"
 
 
-def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> None:
+def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow_area) -> None:
     """Run the agent for `question`, show its progress live, and store the result.
 
     `use_guard`: let the guard (guard.py) check the question first (an app setting).
+    `flow_area`: placeholder of the flow diagram, redrawn with the running step after every event.
     """
     state = st.session_state
     state["unsaved"] = True  # Also if the run fails: its requests are counted in the costs.
@@ -465,9 +501,12 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> N
     with st.chat_message("assistant"):
         steps, sources, answer, blocked = [], {}, "", ""
         progress = st.empty()  # Placeholder, so the status box can be removed if the run fails.
+        stage, done = ("guard" if use_guard else "model"), {"you"}
+        flow_area.html(flow_diagram.diagram_html(stage, done, use_guard))
         try:
-            # The status box is the progress indicator: it lists each step as it happens.
-            with progress.status("Working on it…", expanded=True) as status:
+            # The status box is the progress indicator: it lists each step as it happens, and
+            # its label says which stage runs now (like the flow diagram).
+            with progress.status(flow_diagram.STAGE_LABELS[stage], expanded=True) as status:
                 events = agent.answer_question(
                     question,
                     history,
@@ -480,6 +519,13 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> N
                     use_guard=use_guard,
                 )
                 for event in events:
+                    new_stage = flow_diagram.next_stage(stage, event.kind, event.tool)
+                    if new_stage != stage:
+                        done.add(stage)
+                        stage = new_stage
+                        flow_area.html(flow_diagram.diagram_html(stage, done, use_guard))
+                        if stage in flow_diagram.STAGE_LABELS:
+                            status.update(label=flow_diagram.STAGE_LABELS[stage])
                     if event.kind == "usage":
                         pricing.add_request(state["usage"], **event.usage)
                         continue
@@ -497,9 +543,12 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> N
                 status.update(label="Steps", state="complete", expanded=False)
         except Exception as error:  # API key missing, network problem, model error ...
             progress.empty()
+            flow_area.html(flow_diagram.diagram_html(None, done, use_guard))
             state["messages"].pop()  # Forget the question, so it can be asked again.
             st.error(_error_text(error), icon=":material/error:")
             return
+        done.add(stage)  # The last stage (the answer, or the guard that blocked) is done too.
+        flow_area.html(flow_diagram.diagram_html(None, done, use_guard))
         if blocked:
             progress.empty()
             state["messages"].pop()  # A blocked question does not become part of the conversation.
@@ -520,10 +569,12 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool) -> N
     )
 
 
-def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict) -> None:
-    """The conversation in a scrolling box, with the question field below it.
+def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict, flow_area):
+    """The conversation in a scrolling box; below it the chat settings, the cost line and the question field.
 
     `rules`: the app settings (app_settings.load()), for the spending limit and the guard.
+    `flow_area`: placeholder of the flow diagram (see _answer()).
+    Returns the placeholder of the cost line, filled by render() once the answer has run.
     """
     state = st.session_state
     heading, button = st.columns([3, 2], vertical_alignment="bottom")
@@ -558,6 +609,10 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
                 else:
                     st.markdown(message["content"])
 
+    _chat_settings_row()
+    # Reserved now, filled at the end: the costs are only known after the answer has run.
+    costs_area = st.empty()
+
     # st.chat_input returns the text once, when the user sends it.
     # Taller than one line, so longer questions are readable while typing.
     question = st.chat_input("Ask about the rules for your project", height=CHAT_INPUT_HEIGHT)
@@ -573,7 +628,8 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
                     icon=":material/money_off:",
                 )
             else:
-                _answer(question, category_names, rules["guard_enabled"])
+                _answer(question, category_names, rules["guard_enabled"], flow_area)
+    return costs_area
 
 
 # --- Output ---
@@ -677,7 +733,7 @@ def _show_search_steps(question: str, message: dict, workspace: Workspace, categ
 
 
 def _search_steps_tab(category_names: dict[str, str]) -> None:
-    """Content of the Search steps tab: pick an answer of the conversation, see how it was made."""
+    """Content of the Search steps view: pick an answer of the conversation, see how it was made."""
     state = st.session_state
     messages = state["messages"]
     # Every assistant message follows the question it answers.
@@ -705,47 +761,93 @@ def _search_steps_tab(category_names: dict[str, str]) -> None:
     _show_search_steps(*answers[chosen], state["workspace"], category_names)
 
 
-def _output_section(workspace: Workspace, category_names: dict[str, str]) -> None:
-    """The work product, the list of all references and the search steps, in tabs next to the chat."""
-    st.subheader("Output")
-    document_tab, references_tab, steps_tab = st.tabs(
-        [
-            ":material/description: Work product",
-            f":material/menu_book: References ({len(workspace.sources)})",
-            ":material/account_tree: Search steps",
-        ]
+def _work_product_view(workspace: Workspace, category_names: dict[str, str]) -> None:
+    """Content of the Work product view: the document the assistant wrote, with download and references."""
+    if not workspace.document:
+        st.caption(
+            "Nothing here yet. Ask in the chat for a document, for example a checklist or a list "
+            "of the rules that apply to your project. It appears here, and you can ask for changes."
+        )
+        return
+    title, download = st.columns([5, 3], vertical_alignment="center")
+    title.markdown(f"#### {workspace.document_title}")
+    file_name = re.sub(r"[^\w\- ]", "", workspace.document_title).strip().replace(" ", "_") or "work_product"
+    download.download_button(
+        "Download",
+        data=workspace.export_document(),
+        file_name=f"{file_name}.md",
+        mime="text/markdown",
+        icon=":material/download:",
     )
-    with steps_tab.container(height=BOX_HEIGHT, key="steps_box"):
-        _search_steps_tab(category_names)
-    with document_tab.container(height=BOX_HEIGHT, key="document_box"):
-        if not workspace.document:
-            st.caption(
-                "Nothing here yet. Ask in the chat for a document, for example a checklist or a list "
-                "of the rules that apply to your project. It appears here, and you can ask for changes."
-            )
-        else:
-            title, download = st.columns([5, 3], vertical_alignment="center")
-            title.markdown(f"#### {workspace.document_title}")
-            file_name = re.sub(r"[^\w\- ]", "", workspace.document_title).strip().replace(" ", "_") or "work_product"
-            download.download_button(
-                "Download",
-                data=workspace.export_document(),
-                file_name=f"{file_name}.md",
-                mime="text/markdown",
-                icon=":material/download:",
-            )
-            # Display only: make the document's headings smaller than the title above ("##" -> "#####").
-            st.markdown(re.sub(r"^(#{1,3}) ", r"###\1 ", workspace.document, flags=re.MULTILINE))
-            cited = workspace.sources_by_number(citation_numbers(workspace.document))
-            if cited:
-                st.caption("References")
-                for source in cited:
-                    _show_reference(source, category_names)
-    with references_tab.container(height=BOX_HEIGHT, key="references_box"):
-        if not workspace.sources:
-            st.caption("Every passage the assistant finds in this conversation is listed here, with its document and page.")
-        for source in workspace.sources_by_number():
+    # Display only: make the document's headings smaller than the title above ("##" -> "#####").
+    st.markdown(re.sub(r"^(#{1,3}) ", r"###\1 ", workspace.document, flags=re.MULTILINE))
+    cited = workspace.sources_by_number(citation_numbers(workspace.document))
+    if cited:
+        st.caption("References")
+        for source in cited:
             _show_reference(source, category_names)
+
+
+def _references_view(workspace: Workspace, category_names: dict[str, str]) -> None:
+    """Content of the References view: every passage found in this conversation."""
+    if not workspace.sources:
+        st.caption("Every passage the assistant finds in this conversation is listed here, with its document and page.")
+    for source in workspace.sources_by_number():
+        _show_reference(source, category_names)
+
+
+def _output_versions(workspace: Workspace) -> dict:
+    """Something per output view that changes when its content changes (to see what is new)."""
+    return {
+        "document": workspace.document,
+        "references": len(workspace.sources),
+        "steps": sum(message["role"] == "assistant" for message in st.session_state["messages"]),
+    }
+
+
+def _output_section(workspace: Workspace, category_names: dict[str, str]) -> None:
+    """The work product, all references or the search steps, in a box as high as the chat box.
+
+    The buttons to switch between them are below the box (a segmented control: st.tabs always
+    puts its buttons on top, and forgets the chosen tab when a label changes). A green dot on a
+    button means its view has new content the user has not seen yet: st.session_state
+    ["output_seen"] keeps, per view, what it held when it was last shown (_output_versions()).
+    """
+    state = st.session_state
+    st.subheader("Output")
+    versions = _output_versions(workspace)
+    seen = state.get("output_seen")
+    if seen is None or seen["conversation"] != state["conversation"]:
+        # Another conversation is shown (new, or opened from the history): nothing is new.
+        seen = state["output_seen"] = {"conversation": state["conversation"], **versions}
+    view = state.get("output_view") or "document"  # The choice of the buttons drawn below.
+    seen[view] = versions[view]  # What is shown now counts as seen.
+
+    with st.container(height=BOX_HEIGHT, key=f"{view}_box"):
+        if view == "document":
+            _work_product_view(workspace, category_names)
+        elif view == "references":
+            _references_view(workspace, category_names)
+        else:
+            _search_steps_tab(category_names)
+
+    def label(option: str) -> str:
+        icon, name = OUTPUT_VIEWS[option]
+        count = f" ({len(workspace.sources)})" if option == "references" else ""
+        dot = " :green[⬤]" if versions[option] != seen[option] else ""
+        return f"{icon} {name}{count}{dot}"
+
+    st.segmented_control(
+        "Output view",
+        list(OUTPUT_VIEWS),
+        default="document",
+        required=True,
+        format_func=label,
+        key="output_view",
+        label_visibility="collapsed",
+        width="stretch",
+        wrap=False,  # One row; in a narrow window app.py hides the icons so it fits.
+    )
 
 
 # --- Page ---
@@ -767,21 +869,24 @@ def render() -> None:
     rules = app_settings.load()  # Spending limit and guard, set by the admin; read once per run.
 
     with st.sidebar:
-        # Above it: the login box, drawn by app.py. Both are collapsible boxes, to save space.
+        # Above it: the login box, drawn by app.py.
         _project_input_section(workspace)
         st.divider()
-        _settings_section(categories)
-        st.divider()
-        # Reserved now, filled at the end: the costs are only known after the answer has run.
-        costs_area = st.empty()
+        _documents_section(categories)
 
     chat_column, output_column = st.columns([11, 9], gap="medium")
-    with chat_column:
-        _chat_section(categories, category_names, rules)
     with output_column:
+        # The output is filled after the chat (an answer can change the work product), but sits
+        # above the flow diagram, which must exist before the chat: _answer() redraws it.
+        output_area = st.container()
+        flow_area = st.empty()
+        flow_area.html(flow_diagram.diagram_html(guard_on=rules["guard_enabled"]))
+    with chat_column:
+        costs_area = _chat_section(categories, category_names, rules, flow_area)
+    with output_area:
         _output_section(workspace, category_names)
 
     if username and state["unsaved"] and state["messages"]:
         _save_with_warning(username)
     with costs_area.container():
-        _costs_section(username, rules["spending_limit_usd"])
+        _costs_row(username, rules["spending_limit_usd"])
