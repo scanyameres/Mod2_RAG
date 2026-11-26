@@ -9,11 +9,11 @@ You are the owner and long-term maintainer of this codebase, and its design is u
 - Work only on what is explicitly requested. Avoid adding extra complexity.
 - Explain decisions and ask for confirmation in case of ambiguity.
 - Keep the code clean and well documented, so that the student can keep track of the different modules and functions.
-- Keep `Architecture.md` up to date with a brief summary of the main components of the project, how they work together, and which major decisions have been taken.
+- Keep `docs/Architecture.md` up to date with a brief summary of the main components of the project, how they work together, and which major decisions have been taken.
 
 ## Project
 
-Building Rules Assistant (Sprint 2 project): a RAG chatbot that finds the building regulations that apply to a project. Streamlit UI, LangChain with OpenRouter, LanceDB (vector + keyword search) and tool calling. The task description is in `125.md`.
+Building Rules Assistant (Sprint 2 project): a RAG chatbot that finds the building regulations that apply to a project. Streamlit UI, LangChain with OpenRouter, LanceDB (vector + keyword search) and tool calling. The task description is in `docs/125.md`.
 
 - Package manager: uv, Python 3.14 (a LangChain dependency has no Python 3.15 build yet). Install deps with `uv sync`, add deps with `uv add <pkg>`.
 - Source code lives in `src/scanya_ae_afa_updated0209_2_5/`. Pages (`app.py`, `page_*.py`) only draw the interface; logic lives in the other modules and must stay free of Streamlit code.
@@ -24,6 +24,6 @@ Building Rules Assistant (Sprint 2 project): a RAG chatbot that finds the buildi
 - Knowledge-base documents go in `data/library/<category id>/` and the search index in `data/index/`. Both are committed, so the hosted app (Streamlit Community Cloud, see README) starts with a ready library; today it holds the invented documents of `sample_data/`. Only commit documents that may be shared: never copyrighted ones (e.g. DIN standards), and never copy their text into other files of the repo.
 - `store.py` is the only module that talks to LanceDB.
 - The index is updated from `data/library/` with `build_index.bat` (or `uv run python -m scanya_ae_afa_updated0209_2_5.build_index`, `--rebuild` for everything); it compacts the index afterwards, so commit `data/index/` only after running it. Anything that embeds documents must show the cost and, for a full rebuild, ask first.
-- Login is optional (`auth.py`, accounts in `config.yaml`, committed with a dummy account). The history of logged-in users is in `data/users/` (`user_store.py`), git-ignored: conversations contain passages of the documents. On the hosted app it is backed up to a separate private GitHub repository (`history_backup.py`, `HISTORY_REPO` + `GITHUB_TOKEN`); never push it to the app's repository (a push restarts the app).
+- Login is optional (`auth.py`, accounts in `config.yaml`, committed with a dummy account; the secret that signs the login cookie is `AUTH_COOKIE_KEY` in `.env` / the app's Secrets, never in `config.yaml`). The history of logged-in users is in `data/users/` (`user_store.py`), git-ignored: conversations contain passages of the documents. On the hosted app it is backed up to a separate private GitHub repository (`history_backup.py`, `HISTORY_REPO` + `GITHUB_TOKEN`); never push it to the app's repository (a push restarts the app).
 - Each user may spend at most `settings.SPENDING_LIMIT_USD` (checked in `page_chat.py`, `_spent()`).
-- Keep `TASKS.md` up to date with the status of the core and optional tasks from `125.md`, in the same style: every task listed, a sub-bullet saying what is done (file and function) and what is missing.
+- Keep `docs/TASKS.md` up to date with the status of the core and optional tasks from `docs/125.md`, in the same style: every task listed, a sub-bullet saying what is done (file and function) and what is missing.

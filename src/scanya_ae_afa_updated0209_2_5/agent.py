@@ -9,6 +9,8 @@ Flow of one answer (answer_question()):
 2. It calls tools as needed:
    - search_documentation(query): searches the active document types and returns numbered
      passages. The model writes the query itself, so "and for hotels?" becomes a full query.
+   - read_passages(numbers): returns the text of passages found earlier in the conversation
+     (the system prompt lists only their locations), so a follow-up question needs no new search.
    - write_document(title, content): creates or replaces the work product next to the chat.
 3. It writes the answer, citing the passage numbers.
 
@@ -17,8 +19,11 @@ also reported with its token counts, so the page can add up the costs (pricing.p
 
 The model decides by itself whether to search, with which words, and how often: after
 reading the passages of one search it may search again (other words, an article the passages
-refer to) before it answers. The loop ends when it answers without calling a tool, or after
-settings.MAX_AGENT_STEPS steps.
+refer to) before it answers. Two limits:
+- max_searches (Settings slider): after that many searches the search tool refuses and tells
+  the model to answer with what it has; the answer still comes.
+- settings.MAX_AGENT_STEPS: a safety net that stops the run with an error if the model loops.
+The loop ends when the model answers without calling a tool.
 
 The agent loop (model -> tool -> model ...) is LangChain's create_agent(). The tools are built
 per answer because they are bound to the conversation's Workspace and settings. To add a tool,
@@ -89,13 +94,16 @@ def _make_search_tool(
     category_names: dict[str, str],
     hybrid: bool,
     top_k: int,
+    max_searches: int,
     embeddings: Embeddings | None,
 ) -> BaseTool:
     """Build the search tool for one answer.
 
     It is bound to things the model must not choose itself: the active document types, the
-    search mode, the number of passages per search, and the workspace that numbers the passages.
+    search mode, the number of passages per search, the number of searches allowed for this
+    answer, and the workspace that numbers the passages.
     """
+    searches_made = [0]  # A list, so the inner function can change it.
 
     @tool(response_format="content_and_artifact")
     def search_documentation(query: str) -> tuple[str, list[dict]]:
@@ -108,6 +116,11 @@ def _make_search_tool(
         Args:
             query: What to look for, as a self-contained search query.
         """
+        # The limit is checked here and not with the agent's step limit: that one stops the
+        # run with an error, this one lets the model still write its answer.
+        if searches_made[0] >= max_searches:
+            return prompts.SEARCH_LIMIT_REACHED.format(limit=max_searches), []
+        searches_made[0] += 1
         hits = retrieval.search(query, [category.id for category in active], hybrid, top_k, embeddings)
         if not hits:
             return prompts.NO_RESULTS, []
@@ -117,6 +130,33 @@ def _make_search_tool(
         return "\n\n".join(passages), sources
 
     return search_documentation
+
+
+def _make_read_tool(workspace: Workspace, category_names: dict[str, str]) -> BaseTool:
+    """Build the tool that gives the model the text of passages found earlier in the conversation.
+
+    The system prompt lists only the location of those passages (number, document, section,
+    page), to keep it short. For a follow-up question the model fetches the texts it needs by
+    number: no new search, no embedding request, and exactly the passages it cited before.
+    """
+
+    @tool(response_format="content_and_artifact")
+    def read_passages(numbers: list[int]) -> tuple[str, list[dict]]:
+        """Read again the full text of passages found earlier in this conversation.
+
+        Use it for follow-up questions about earlier answers, instead of searching again.
+
+        Args:
+            numbers: Passage numbers from the list of passages found so far, e.g. [1, 4].
+        """
+        sources = workspace.sources_by_number(numbers)
+        texts = [f"{_location(source, category_names)}\n{source['text']}" for source in sources]
+        unknown = sorted(set(numbers) - {source["number"] for source in sources})
+        if unknown:
+            texts.append(prompts.UNKNOWN_PASSAGES.format(numbers=", ".join(map(str, unknown))))
+        return "\n\n".join(texts), sources
+
+    return read_passages
 
 
 def _make_document_tool(workspace: Workspace) -> BaseTool:
@@ -143,7 +183,12 @@ def _make_document_tool(workspace: Workspace) -> BaseTool:
     return write_document
 
 
-def _system_prompt(workspace: Workspace, categories: list[Category], active_category_ids: list[str]) -> str:
+def _system_prompt(
+    workspace: Workspace,
+    categories: list[Category],
+    active_category_ids: list[str],
+    max_searches: int = settings.MAX_SEARCHES,
+) -> str:
     """Fill the system prompt with the state of this conversation."""
 
     def bullets(selected: list[Category]) -> str:
@@ -155,6 +200,7 @@ def _system_prompt(workspace: Workspace, categories: list[Category], active_cate
     return prompts.SYSTEM_PROMPT.format(
         active_categories=bullets([category for category in categories if category.id in active_category_ids]),
         inactive_categories=bullets([category for category in categories if category.id not in active_category_ids]),
+        max_searches=max_searches,
         project_input=workspace.project_input() or prompts.NO_PROJECT_INPUT,
         document=document,
         sources=sources or prompts.NO_SOURCES,
@@ -169,6 +215,7 @@ def answer_question(
     model_name: str = settings.CHAT_MODELS[0],
     hybrid: bool = True,
     top_k: int = settings.TOP_K,
+    max_searches: int = settings.MAX_SEARCHES,
     chat_model: BaseChatModel | None = None,
     embeddings: Embeddings | None = None,
     guard_model: BaseChatModel | None = None,
@@ -187,6 +234,7 @@ def answer_question(
         model_name: OpenRouter model id (one of settings.CHAT_MODELS).
         hybrid: True = vector + keyword search; False = vector search only.
         top_k: Passages the model gets per search.
+        max_searches: Searches the model may make for this answer.
         chat_model, embeddings, guard_model: Only for tests, to run without an API key.
 
     Raises:
@@ -208,10 +256,11 @@ def answer_question(
     agent = create_agent(
         model=chat_model or config.get_chat_model(model_name, settings.TEMPERATURE),
         tools=[
-            _make_search_tool(workspace, active, category_names, hybrid, top_k, embeddings),
+            _make_search_tool(workspace, active, category_names, hybrid, top_k, max_searches, embeddings),
+            _make_read_tool(workspace, category_names),
             _make_document_tool(workspace),
         ],
-        system_prompt=_system_prompt(workspace, categories, active_category_ids),
+        system_prompt=_system_prompt(workspace, categories, active_category_ids, max_searches),
     )
     messages = history[-settings.MAX_HISTORY_MESSAGES :] + [{"role": "user", "content": question}]
 
@@ -231,7 +280,11 @@ def answer_question(
                     yield Event("usage", "", usage=usage)
                 if isinstance(message, AIMessage) and message.tool_calls:
                     for call in message.tool_calls:
-                        summary = call["args"].get("query") or call["args"].get("title") or str(call["args"])
+                        args = call["args"]
+                        if call["name"] == "read_passages":
+                            summary = ", ".join(f"[{number}]" for number in args.get("numbers", []))
+                        else:
+                            summary = args.get("query") or args.get("title") or str(args)
                         yield Event("tool_call", str(summary), tool=call["name"])
                 elif isinstance(message, AIMessage):
                     yield Event("answer", message.text)

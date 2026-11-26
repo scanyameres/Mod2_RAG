@@ -4,23 +4,30 @@ Taken from the Sprint 1 project (scanya-AE.AFA.updated0209.1.6, auth.py). Change
 project: the box is drawn in the sidebar (app.py), any non-empty password is accepted for a
 new account (see _AnyPassword), and current_user() tells the pages who is logged in.
 
-config.yaml holds the user accounts, with passwords stored as bcrypt hashes, and the key that
-signs the login cookie. It is committed to git on purpose (a dummy account for now); a real
-deployment would keep it out of git. If it does not exist, it is created on first start with
-no users and a random cookie key; users then sign up with the "Create account" form, which
-streamlit-authenticator writes back to the same file.
+config.yaml holds the user accounts, with passwords stored as bcrypt hashes, and the name and
+lifetime of the login cookie. It is committed to git on purpose, with the demo accounts listed in the README. If it
+does not exist, it is created on first start with no users; users then sign up with the
+"Create account" form, which streamlit-authenticator writes back to the same file.
+
+The key that signs the login cookie is a secret and is NOT in config.yaml: anyone who knows it
+could make a cookie for any user name and read that user's history. It is read from the
+environment variable AUTH_COOKIE_KEY (.env locally, the app's Secrets on Streamlit). Without
+it, a random key is made at every start of the server: everything works, but logins are not
+remembered after a restart.
 
 The app works without logging in. Logging in adds the history (user_store.py).
 
 Public functions: login_area() (draws the login box), current_user().
 """
 
+import os
 import secrets
 import time
 
 import streamlit as st
 import streamlit_authenticator as stauth
 import yaml
+from dotenv import load_dotenv
 from streamlit_authenticator.utilities import LoginError, Validator
 
 from scanya_ae_afa_updated0209_2_5 import settings
@@ -29,6 +36,17 @@ from scanya_ae_afa_updated0209_2_5 import settings
 # written (or removed) by a small component in the browser; redrawing at once would remove
 # that component before it has done its work, and the login would not survive a page reload.
 COOKIE_WAIT_SECONDS = 1.0
+
+
+# Used when AUTH_COOKIE_KEY is not set. Made once per server process (modules are imported once,
+# not at every rerun of the page), so logins hold until the server is restarted.
+_RANDOM_COOKIE_KEY = secrets.token_hex(32)
+
+
+def _cookie_key() -> str:
+    """The secret that signs the login cookie: AUTH_COOKIE_KEY, or else the random key above."""
+    load_dotenv()
+    return os.environ.get("AUTH_COOKIE_KEY", "").strip() or _RANDOM_COOKIE_KEY
 
 
 class _AnyPassword(Validator):
@@ -58,7 +76,7 @@ def login_area() -> str | None:
     "username", "name"). After logging in or out, the page is redrawn (st.rerun) once the login
     cookie had time to be written or removed.
     """
-    authenticator = _get_authenticator()
+    authenticator, config = _get_authenticator()
     if st.session_state.get("authentication_status"):
         name_column, logout_column = st.columns((3, 2), vertical_alignment="center")
         name_column.caption(f"Signed in as **{st.session_state['username']}**")
@@ -87,6 +105,7 @@ def login_area() -> str | None:
                     location="main", captcha=False, password_hint=False
                 )
                 if new_username:
+                    _save_config(config)  # The library added the account to config["credentials"].
                     st.success(f"Account **{new_username}** created. You can now log in.")
             except Exception as error:  # e.g. username taken, passwords don't match
                 st.error(str(error))
@@ -96,30 +115,37 @@ def login_area() -> str | None:
     return None
 
 
-def _get_authenticator() -> stauth.Authenticate:
-    """Return the authenticator for this page run, creating config.yaml first if needed."""
+def _get_authenticator() -> tuple[stauth.Authenticate, dict]:
+    """Return the authenticator for this page run and the content of config.yaml it works on.
+
+    The accounts are passed as a dict, not as the file path: given the path, the library would
+    read the cookie key from the file too, and the key must not be in the file. The price: the
+    library no longer writes the file itself, so login_area() saves it after a new account
+    (_save_config()). Login statistics the library keeps per user (failed attempts, logged in)
+    are therefore not written to the file; nothing in the app uses them.
+    """
     if not settings.AUTH_CONFIG_FILE.exists():
-        _create_config()
+        _save_config(_starting_config())
     config = yaml.safe_load(settings.AUTH_CONFIG_FILE.read_text(encoding="utf-8"))
-    # Passing the file path (not a dict) lets the library save new accounts to the file itself.
-    return stauth.Authenticate(
-        str(settings.AUTH_CONFIG_FILE),
+    authenticator = stauth.Authenticate(
+        config["credentials"],
         cookie_name=config["cookie"]["name"],
-        cookie_key=config["cookie"]["key"],
+        cookie_key=_cookie_key(),
         cookie_expiry_days=config["cookie"]["expiry_days"],
         validator=_AnyPassword(),
         password_instructions="Any password is accepted for now.",  # Help text of the password field.
     )
+    return authenticator, config
 
 
-def _create_config() -> None:
-    """Write a starting config.yaml: no users yet and a random secret for the login cookie."""
-    config = {
+def _starting_config() -> dict:
+    """Content of a new config.yaml: no users yet, name and lifetime of the login cookie."""
+    return {
         "credentials": {"usernames": {}},
-        "cookie": {
-            "name": "building_rules_login",
-            "key": secrets.token_hex(32),
-            "expiry_days": 30,
-        },
+        "cookie": {"name": "building_rules_login", "expiry_days": 30},
     }
+
+
+def _save_config(config: dict) -> None:
+    """Write the accounts (and cookie name and lifetime) to config.yaml."""
     settings.AUTH_CONFIG_FILE.write_text(yaml.safe_dump(config), encoding="utf-8")

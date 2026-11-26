@@ -32,9 +32,10 @@ st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/a
 # The only custom CSS of the app:
 # 1. Less empty space above the content.
 # 2. The chat and output boxes (containers with these keys in page_chat.py) fill the window
-#    height, so chat and work product stay side by side without scrolling the page.
+#    height, so chat and work product stay side by side without scrolling the page. The chat
+#    box is shorter than the output boxes, so the (taller) question field sits higher up.
 #    Streamlit gives a fixed-height container both "height" and "flex", so both are replaced.
-CHAT_BOX_HEIGHT = "calc(100vh - 14.5rem)"
+CHAT_BOX_HEIGHT = "calc(100vh - 21rem)"
 OUTPUT_BOX_HEIGHT = "calc(100vh - 14rem)"
 st.html(
     f"""

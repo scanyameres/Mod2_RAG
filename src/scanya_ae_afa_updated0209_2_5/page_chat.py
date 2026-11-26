@@ -2,7 +2,7 @@
 
 - Project input (sidebar): the user's own files and notes about the project.
 - Settings (sidebar): document types to search, hybrid search on/off, passages per search,
-  chat model.
+  searches per answer, chat model.
 - Costs (sidebar): estimated cost of this chat per model, and the logged-in user's total.
 - Chat (left): the conversation; every answer lists its references.
 - Output (right): the work product the assistant writes, all references of the conversation,
@@ -18,7 +18,7 @@ runs is kept in st.session_state:
   messages also have "steps" (what the agent did), "sources" (the passages it found) and
   "settings" (the settings the answer was made with);
 - "workspace": the conversation's Workspace (project input, work product, sources);
-- "active_categories", "hybrid", "top_k", "model_name": the settings;
+- "active_categories", "hybrid", "top_k", "max_searches", "model_name": the settings;
 - "usage": requests, tokens and cost of this conversation per chat model (see pricing.py);
 - "conversation_id": the id under which the conversation is saved in the user's history;
 - "unsaved": True while the conversation has changes that are not in the history yet;
@@ -43,6 +43,8 @@ from scanya_ae_afa_updated0209_2_5.workspace import Workspace, citation_numbers
 # Height of the chat and output boxes in pixels. A CSS rule in app.py stretches both to the
 # window height; this value is the fallback.
 BOX_HEIGHT = 560
+# Minimum height of the question field in pixels (about four lines; it grows with the text).
+CHAT_INPUT_HEIGHT = 120
 
 EXAMPLE_REQUESTS = (
     "Which rules apply to the project described in my files?",
@@ -65,6 +67,7 @@ def _init_state(categories: list[Category]) -> None:
     state.setdefault("active_categories", [category.id for category in categories])
     state.setdefault("hybrid", True)
     state.setdefault("top_k", settings.TOP_K)
+    state.setdefault("max_searches", settings.MAX_SEARCHES)
     state.setdefault("model_name", settings.CHAT_MODELS[0])
     state.setdefault("usage", {})
     state.setdefault("conversation_id", uuid.uuid4().hex)
@@ -87,6 +90,7 @@ def _new_conversation(categories: list[Category]) -> None:
     state["active_categories"] = [category.id for category in categories]
     state["hybrid"] = True
     state["top_k"] = settings.TOP_K
+    state["max_searches"] = settings.MAX_SEARCHES
     state["usage"] = {}
     state["conversation_id"] = uuid.uuid4().hex
     state["unsaved"] = False
@@ -102,6 +106,7 @@ def _current_settings() -> dict:
         "active_categories": list(state["active_categories"]),
         "hybrid": state["hybrid"],
         "top_k": state["top_k"],
+        "max_searches": state["max_searches"],
         "model_name": state["model_name"],
     }
 
@@ -120,8 +125,9 @@ def open_conversation(conversation: dict) -> None:
     state["workspace"] = Workspace(**conversation["workspace"])
     state["active_categories"] = saved_settings["active_categories"]
     state["hybrid"] = saved_settings["hybrid"]
-    # Conversations saved before this setting existed have no "top_k".
+    # Conversations saved before these settings existed have no "top_k" or "max_searches".
     state["top_k"] = min(saved_settings.get("top_k", settings.TOP_K), settings.TOP_K_MAX)
+    state["max_searches"] = min(saved_settings.get("max_searches", settings.MAX_SEARCHES), settings.MAX_SEARCHES_MAX)
     # The list of models may have changed since the conversation was saved.
     saved_model = saved_settings["model_name"]
     state["model_name"] = saved_model if saved_model in settings.CHAT_MODELS else settings.CHAT_MODELS[0]
@@ -195,11 +201,33 @@ def _remove_project_file(file_name: str) -> None:
     st.session_state["workspace"].project_files.pop(file_name, None)
 
 
+def _project_input_label(workspace: Workspace) -> str:
+    """Title of the collapsed project input box, saying what it holds, e.g. 'Project input · 2 files, notes'."""
+    parts = []
+    if workspace.project_files:
+        count = len(workspace.project_files)
+        parts.append(f"{count} file{'s' if count > 1 else ''}")
+    if workspace.project_notes.strip():
+        parts.append("notes")
+    return "Project input · " + (", ".join(parts) if parts else "empty")
+
+
 def _project_input_section(workspace: Workspace) -> None:
-    """Sidebar section where the user describes the project with files and notes."""
+    """Sidebar box where the user describes the project with files and notes.
+
+    Collapsed by default to save space; its title says what it holds. The key keeps it open
+    while its title changes (after an upload).
+    """
     state = st.session_state
-    st.subheader("Project input", help="Drafts, requirement lists or notes about your project. "
-                 "The assistant reads them with every question. They are not added to the knowledge base.")
+    with st.expander(_project_input_label(workspace), icon=":material/folder_open:", key=f"project_input_{state['conversation']}"):
+        _project_input_widgets(workspace)
+
+
+def _project_input_widgets(workspace: Workspace) -> None:
+    """Content of the project input box: uploader, list of attached files, notes."""
+    state = st.session_state
+    st.caption("Drafts, requirement lists or notes about your project. The assistant reads them "
+               "with every question. They are not added to the knowledge base.")
     uploader_key = f"project_upload_{state['upload_round']}"
     st.file_uploader(
         "Project files",
@@ -208,6 +236,7 @@ def _project_input_section(workspace: Workspace) -> None:
         key=uploader_key,
         on_change=_attach_project_files,
         args=(uploader_key,),
+        label_visibility="collapsed",
     )
     for problem in state.pop("upload_problems", []):
         st.warning(problem, icon=":material/warning:")
@@ -226,7 +255,7 @@ def _project_input_section(workspace: Workspace) -> None:
         "Notes or requirements",
         value=workspace.project_notes,
         key=f"project_notes_{state['conversation']}",
-        height=100,
+        height=80,
         placeholder="e.g. Hotel with 40 rooms, 4 storeys, restaurant on the ground floor",
     )
     if workspace.project_input_is_cut():
@@ -295,6 +324,17 @@ def _settings_section(categories: list[Category]) -> None:
         help="How many passages the assistant is given each time it searches. More passages can "
         "catch a rule that would be missed, but cost more tokens and can distract the model. "
         "The Search steps tab shows the passages of every search.",
+    )
+    state["max_searches"] = st.slider(
+        "Searches per answer",
+        min_value=1,
+        max_value=settings.MAX_SEARCHES_MAX,
+        value=state["max_searches"],
+        key=f"max_searches_{state['conversation']}",
+        help="How often the assistant may search for one answer. After reading the passages of a "
+        "search it can search again (other words, an article the passages refer to). More "
+        "searches can find more, but every search is one more request to the model. "
+        "Re-reading passages found earlier in the chat does not count as a search.",
     )
     state["model_name"] = st.selectbox(
         "Model",
@@ -388,11 +428,16 @@ def _show_step(step: dict) -> None:
     """Show one agent step (a tool call or its result) as a line inside the status box."""
     if step["kind"] == "tool_call" and step["tool"] == "write_document":
         st.markdown(f":material/edit_document: **Write work product:** {step['text']}")
+    elif step["kind"] == "tool_call" and step["tool"] == "read_passages":
+        st.markdown(f":material/menu_book: **Re-read passages:** {step['text']}")
     elif step["kind"] == "tool_call":
         st.markdown(f":material/search: **Search:** {step['text']}")
-    elif step["tool"] == "search_documentation":
+    elif step["tool"] == "search_documentation" and step["sources"]:
         found = ", ".join(f"[{source['number']}] {source['source']}" for source in step["sources"])
-        st.markdown(f":material/article: **Found:** {found or 'nothing in the active document types'}")
+        st.markdown(f":material/article: **Found:** {found}")
+    elif step["tool"] == "search_documentation":
+        # Nothing found, or the search limit was reached: the tool's own message says which.
+        st.markdown(f":material/article: {step['text']}")
 
 
 def _show_assistant_message(message: dict, category_names: dict[str, str]) -> None:
@@ -438,6 +483,7 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
                     state["model_name"],
                     state["hybrid"],
                     state["top_k"],
+                    state["max_searches"],
                 )
                 for event in events:
                     if event.kind == "usage":
@@ -516,7 +562,8 @@ def _chat_section(categories: list[Category], category_names: dict[str, str]) ->
                     st.markdown(message["content"])
 
     # st.chat_input returns the text once, when the user sends it.
-    question = st.chat_input("Ask about the rules for your project")
+    # Taller than one line, so longer questions are readable while typing.
+    question = st.chat_input("Ask about the rules for your project", height=CHAT_INPUT_HEIGHT)
     if question:
         with box:
             problem = agent.validate_question(question)
@@ -578,6 +625,8 @@ def _settings_line(used: dict, category_names: dict[str, str]) -> str:
     return (
         f"{used['model_name']} · hybrid search {'on' if used['hybrid'] else 'off'} · "
         f"{used['top_k']} passages per search · "
+        # Answers saved before this setting existed have no "max_searches".
+        + (f"up to {used['max_searches']} searches · " if "max_searches" in used else "")
         + (f"switched off: {', '.join(switched_off)}" if switched_off else "all document types on")
     )
 
@@ -595,6 +644,8 @@ def _show_search_steps(question: str, message: dict, workspace: Workspace, categ
         if step["kind"] == "tool_call" and step["tool"] == "search_documentation":
             searches += 1
             path.append(f":blue-badge[:material/search: Search {searches}]")
+        elif step["kind"] == "tool_call" and step["tool"] == "read_passages":
+            path.append(":violet-badge[:material/menu_book: Re-read]")
         elif step["kind"] == "tool_call":
             path.append(":orange-badge[:material/edit_document: Write]")
     path.append(":green-badge[:material/chat: Answer]")
@@ -607,6 +658,8 @@ def _show_search_steps(question: str, message: dict, workspace: Workspace, categ
     for step in steps:
         if step["kind"] == "tool_call" and step["tool"] == "search_documentation":
             queries.append(step["text"])  # Its result follows in a later step.
+        elif step["kind"] == "tool_call" and step["tool"] == "read_passages":
+            st.markdown(f":material/menu_book: **Re-read passages** · {step['text']} (found earlier, no new search)")
         elif step["kind"] == "tool_call":
             st.markdown(f":material/edit_document: **Write work product** · {step['text']}")
         elif step["tool"] == "search_documentation":
@@ -616,7 +669,7 @@ def _show_search_steps(question: str, message: dict, workspace: Workspace, categ
                 _passage_list(step["sources"], cited)
                 found |= {source["number"] for source in step["sources"]}
             else:
-                st.caption("Nothing found in the active document types.")
+                st.caption(step["text"])  # Nothing found, or the search limit was reached.
     if number:
         st.markdown(
             f":material/chat: **Answer** · cites {len(cited & found)} of the {len(found)} passages found. "
@@ -716,7 +769,7 @@ def render() -> None:
     workspace = state["workspace"]
 
     with st.sidebar:
-        st.divider()  # Above it: the login box, drawn by app.py.
+        # Above it: the login box, drawn by app.py. Both are collapsible boxes, to save space.
         _project_input_section(workspace)
         st.divider()
         _settings_section(categories)

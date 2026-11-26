@@ -1,9 +1,24 @@
 cookie:
   expiry_days: 30
-  key: 64593d4703ec8ddc31457e4757ac38169aca64ff15d9d817f01f4c032ecf1bd9
   name: building_rules_login
 credentials:
   usernames:
+    guest:
+      email: guest@example.com
+      failed_login_attempts: 0
+      first_name: Guest
+      last_name: Demo
+      logged_in: false
+      password: $2b$12$ymV7t4lWeNsGF35VwfxoFOFAchtjYXVfz9lzEI9azhgTk3burXvty
+      roles: null
+    lluis:
+      email: lluis@example.com
+      failed_login_attempts: 0
+      first_name: Lluis
+      last_name: Demo
+      logged_in: false
+      password: $2b$12$M7qnv3feWwE.e0w9JDY6mODAvCRh0lCyW505wVkXdNXXaXRlnv6w6
+      roles: null
     sergi:
       email: sergi@example.com
       failed_login_attempts: 0
@@ -11,4 +26,12 @@ credentials:
       last_name: Dummy
       logged_in: true
       password: $2b$12$xuFaRuq/RayHSIIiOQXyx.0hQ.T1EV49bz8CyxJkZBv/JCugBS.QS
+      roles: null
+    turing:
+      email: turing@example.com
+      failed_login_attempts: 0
+      first_name: Turing
+      last_name: Demo
+      logged_in: false
+      password: $2b$12$eajpY5yeetCsrOtFYzwHr.EtD4pNw2Pq/nVKjmtY9M0RcfYnzZNmy
       roles: null

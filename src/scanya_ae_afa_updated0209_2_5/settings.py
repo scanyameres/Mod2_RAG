@@ -50,9 +50,15 @@ RRF_CONSTANT = 60  # Usual constant of Reciprocal Rank Fusion (see retrieval.py)
 # --- Agent ---
 # Earlier messages sent along with a new question (older ones are dropped to limit tokens).
 MAX_HISTORY_MESSAGES = 12
-# Upper limit of steps per answer, so a confused model cannot loop forever. A search takes two
-# steps (the model asks, the tool answers) and the final answer one: 16 allows about 7 searches.
-MAX_AGENT_STEPS = 16
+# Searches the model may make for one answer (default of the slider in Settings). After that
+# the search tool refuses and tells the model to answer with what it has. Re-reading passages
+# already found (read_passages) does not count: it costs no search.
+MAX_SEARCHES = 4
+MAX_SEARCHES_MAX = 8  # Upper end of that slider.
+# Safety net: upper limit of steps per answer, so a confused model cannot loop forever. A tool
+# round takes two steps (the model asks, the tool answers) and the final answer one. 30 leaves
+# room for MAX_SEARCHES_MAX searches plus re-reading, writing the work product and refusals.
+MAX_AGENT_STEPS = 30
 
 # --- Guard (guard.py) ---
 # Small, cheap model that checks each question for prompt injection and scope before the

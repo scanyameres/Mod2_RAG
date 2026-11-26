@@ -370,6 +370,34 @@ def test_agent_gives_the_model_top_k_passages_per_search(filled_library):
     assert result.text.count("\n\n") == 1  # Two passages in the text the model reads.
 
 
+def test_search_limit_lets_the_model_still_answer(filled_library):
+    # The model tries three searches with a limit of two: the third is refused, not run.
+    replies = [_search_call("Abstandsfläche"), _search_call("Brandwand"), _search_call("lichte Höhe"), AIMessage(content="[1]")]
+    events = list(
+        agent.answer_question(
+            "Frage", [], Workspace(), ["general_building", "fire_safety"], max_searches=2,
+            chat_model=FakeToolCallingModel(messages=iter(replies)), guard_model=FakeGuardModel(), embeddings=EMBEDDINGS,
+        )
+    )
+    results = [event for event in events if event.kind == "tool_result"]
+    assert [bool(result.sources) for result in results] == [True, True, False]
+    assert results[2].text.startswith("Search limit reached (2 searches")
+    assert events[-1].kind == "answer" and events[-1].text == "[1]"
+
+
+def test_read_passages_returns_earlier_passages_without_searching(filled_library):
+    workspace = Workspace()
+    first = _run_agent(workspace, "Abstandsfläche?", [_search_call("Abstandsfläche"), AIMessage(content="[1]")])
+    text_of_1 = first[1].sources[0]["text"]
+    read_call = AIMessage(content="", tool_calls=[{"name": "read_passages", "args": {"numbers": [1, 99]}, "id": "call_3"}])
+    second = _run_agent(workspace, "Und genauer?", [read_call, AIMessage(content="Genauer: [1]")])
+    assert [event.kind for event in second] == ["tool_call", "tool_result", "answer"]
+    assert second[0].tool == "read_passages" and second[0].text == "[1], [99]"
+    assert [source["number"] for source in second[1].sources] == [1]
+    assert text_of_1 in second[1].text
+    assert "No passage with these numbers in this conversation: 99." in second[1].text
+
+
 def test_chat_model_is_created_with_the_temperature_from_settings(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     model = config.get_chat_model(settings.CHAT_MODELS[0], settings.TEMPERATURE)

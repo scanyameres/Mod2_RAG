@@ -8,3 +8,7 @@ primaryColor = "#2F6F62"
 [server]
 # Largest file the upload box accepts, in MB. Keep it equal to MAX_UPLOAD_MB in config.py.
 maxUploadSize = 25
+
+[theme.sidebar]
+# Less empty space above the first sidebar element (the login box).
+paddingTop = "0.5rem"
