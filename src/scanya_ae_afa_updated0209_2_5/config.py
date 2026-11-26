@@ -8,6 +8,10 @@ API keys are read from the environment. The .env file in the project root (git-i
 .env.example) is loaded first, without overriding variables that are already set, so a key
 stored as a Windows environment variable works as well.
 
+On Streamlit Community Cloud there is no .env: the key goes into the app's Secrets
+(see .streamlit/secrets.toml.example). Streamlit passes top-level secrets on as environment
+variables, so this module finds the key the same way and needs no Streamlit code.
+
 Public functions: get_client(), get_chat_model().
 """
 

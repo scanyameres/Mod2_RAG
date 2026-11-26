@@ -14,11 +14,14 @@ dist/
 !.env.example
 .streamlit/secrets.toml
 
-# Knowledge base and user history — never commit:
-# data/library/ holds the uploaded documents (may be copyrighted, e.g. DIN standards),
-# data/index/ is the search index built from them (can be rebuilt in the app),
-# data/users/ holds the saved conversations of logged-in users (they quote the documents).
-data/
+# Data. The knowledge base (data/library/) and its search index (data/index/) ARE committed,
+# so the hosted app starts with a ready base library. Only add documents that may be shared
+# (the invented sample documents, or with permission), never copyrighted ones such as DIN
+# standards. Not committed:
+# data/users/ holds the saved conversations of logged-in users (backed up to a separate
+# private repository instead, see history_backup.py), data/raw/ is a local scratch folder.
+data/users/
+data/raw/
 
 # Tooling caches
 .pytest_cache/

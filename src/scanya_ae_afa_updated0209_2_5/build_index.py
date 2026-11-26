@@ -17,7 +17,7 @@ after "y". The work itself is done by library.py; this file only prints and asks
 
 import argparse
 
-from scanya_ae_afa_updated0209_2_5 import library, pricing, settings
+from scanya_ae_afa_updated0209_2_5 import library, pricing, settings, store
 from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 
 
@@ -57,6 +57,7 @@ def main(arguments: list[str] | None = None) -> None:
     else:
         added, removed_count, problems = library.sync_index(embeddings)
         print(f"{added} document(s) added, {removed_count} removed.")
+    store.compact()  # Fewer, smaller files in data/index/, which is committed to git.
     for problem in problems:
         print(f"  problem: {problem}")
     if any("API_KEY" in problem for problem in problems):  # config.py could not find the key.

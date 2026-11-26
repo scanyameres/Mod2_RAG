@@ -9,8 +9,11 @@ category, section, page). LanceDB searches the same table in two ways:
 Both take the list of active categories and only look at those chunks.
 
 Public: add_chunks(), delete_document(), list_documents(), vector_search(),
-keyword_search(), reset().
+keyword_search(), reset(), compact().
 """
+
+import warnings
+from datetime import timedelta
 
 import lancedb
 import pyarrow as pa
@@ -160,3 +163,18 @@ def keyword_search(text: str, categories: list[str], limit: int) -> list[dict]:
 def reset() -> None:
     """Delete the whole index (the uploaded files in data/library/ are not touched)."""
     _connect().drop_table(TABLE_NAME, ignore_missing=True)
+
+
+def compact() -> None:
+    """Merge the table's files and delete its older versions, so data/index/ stays small.
+
+    LanceDB keeps a new version of the table after every change (13 documents added one by one
+    left 315 files, 7.5 MB; compacted: 11 files, under 1 MB). This matters because data/index/
+    is committed to git. Only for the build tool (build_index.py): a search running at the same
+    time on an older version would fail, so the app does not call it.
+    """
+    table = _open_table()
+    if table is not None:
+        with warnings.catch_warnings():  # LanceDB warns about exactly the case described above.
+            warnings.simplefilter("ignore", UserWarning)
+            table.optimize(cleanup_older_than=timedelta(0), delete_unverified=True)

@@ -70,6 +70,12 @@ GUARD_CONTEXT_CHARS = 1_000
 TYPICAL_ANSWER_INPUT_TOKENS = 6_000
 TYPICAL_ANSWER_OUTPUT_TOKENS = 300
 
+# --- Spending limit ---
+# Most a user may spend on answers (chat model, guard and search embeddings), in USD. Logged
+# in: over all conversations in the user's history. Not logged in: over the browser session
+# (a reload starts a new session, so set a limit on the API key at OpenRouter as well).
+SPENDING_LIMIT_USD = 1.00
+
 # --- Limits (input validation) ---
 MAX_QUESTION_LENGTH = 2_000  # Characters per chat message.
 MAX_UPLOAD_MB = 25  # Per uploaded file (knowledge base and project input).

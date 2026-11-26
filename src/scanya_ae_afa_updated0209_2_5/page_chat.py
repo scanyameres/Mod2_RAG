@@ -24,7 +24,9 @@ runs is kept in st.session_state:
 - "unsaved": True while the conversation has changes that are not in the history yet;
 - "owner": the user who was logged in when the page was last drawn (None = nobody);
 - "conversation": a counter, increased whenever another conversation is shown;
-- "upload_round": a counter that empties the project file uploader after each upload.
+- "upload_round": a counter that empties the project file uploader after each upload;
+- "session_cost": cost of the earlier conversations of this browser session (for the spending
+  limit of a user who is not logged in, see _spent()).
 """
 
 import re
@@ -70,6 +72,7 @@ def _init_state(categories: list[Category]) -> None:
     state.setdefault("owner", None)
     state.setdefault("conversation", 1)
     state.setdefault("upload_round", 1)
+    state.setdefault("session_cost", 0.0)
 
 
 def _new_conversation(categories: list[Category]) -> None:
@@ -78,6 +81,7 @@ def _new_conversation(categories: list[Category]) -> None:
     The conversation shown before stays in the history of a logged-in user.
     """
     state = st.session_state
+    state["session_cost"] += pricing.total_cost(state["usage"])
     state["messages"] = []
     state["workspace"] = Workspace()
     state["active_categories"] = [category.id for category in categories]
@@ -146,6 +150,29 @@ def _save_conversation(username: str) -> None:
         },
     )
     state["unsaved"] = False
+
+
+def _save_with_warning(username: str) -> None:
+    """_save_conversation(), with a warning if the copy to GitHub failed (user_store.BackupError)."""
+    try:
+        _save_conversation(username)
+    except user_store.BackupError as error:
+        st.session_state["unsaved"] = False  # It is on the local disk; the next answer tries GitHub again.
+        st.toast(str(error), icon=":material/cloud_off:")
+
+
+# --- Spending limit ---
+
+
+def _spent(username: str | None) -> float:
+    """What the user spent so far, for settings.SPENDING_LIMIT_USD.
+
+    Logged in: all conversations in the history (the conversation on the page is saved after
+    every answer, so it is included). Not logged in: the conversations of this browser session.
+    """
+    if username:
+        return user_store.total_cost(username)
+    return st.session_state["session_cost"] + pricing.total_cost(st.session_state["usage"])
 
 
 # --- Sidebar: project input ---
@@ -285,7 +312,7 @@ def _settings_section(categories: list[Category]) -> None:
 
 
 def _costs_section(username: str | None) -> None:
-    """Sidebar section with the estimated cost of this chat and the user's total."""
+    """Sidebar section with the estimated cost of this chat, the user's total and the limit."""
     usage = st.session_state["usage"]
     st.subheader(
         "Costs",
@@ -312,6 +339,11 @@ def _costs_section(username: str | None) -> None:
         st.caption("All conversations in *My history*.")
     else:
         st.caption("Log in to save your conversations and keep a total.")
+    limit = settings.SPENDING_LIMIT_USD
+    st.progress(
+        min(_spent(username) / limit, 1.0),
+        text=f"Spending limit: {pricing.format_usd(_spent(username))} of {pricing.format_usd(limit)} used",
+    )
 
 
 # --- References (used by the chat and the output section) ---
@@ -490,6 +522,12 @@ def _chat_section(categories: list[Category], category_names: dict[str, str]) ->
             problem = agent.validate_question(question)
             if problem:
                 st.warning(problem, icon=":material/warning:")
+            elif _spent(auth.current_user()) >= settings.SPENDING_LIMIT_USD:
+                st.warning(
+                    f"The spending limit of {pricing.format_usd(settings.SPENDING_LIMIT_USD)} per user is "
+                    "reached, so no more questions can be answered. Please contact the app owner.",
+                    icon=":material/money_off:",
+                )
             else:
                 _answer(question, category_names)
 
@@ -693,6 +731,6 @@ def render() -> None:
         _output_section(workspace, category_names)
 
     if username and state["unsaved"] and state["messages"]:
-        _save_conversation(username)
+        _save_with_warning(username)
     with costs_area.container():
         _costs_section(username)

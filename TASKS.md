@@ -81,7 +81,8 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - [ ] 6. Add visualisation of tool call results.
 - [ ] 7. Implement conversation export in various formats (PDF, CSV, JSON).
 - [ ] 8. Connect to tools from a publicly available remote MCP server.
-- [ ] 9. Implement rate limiting and API key management.
+- [~] 9. Implement rate limiting and API key management.
+  - Done: spending limit of $1 per user (`settings.SPENDING_LIMIT_USD`, checked before every answer in `page_chat._chat_section()` with `page_chat._spent()`, shown as a bar in the Costs section): over the whole history for a logged-in user, over the browser session otherwise. The API key is never shown to users: locally from `.env`, on Streamlit Community Cloud from the app's Secrets (`config.py`, `.streamlit/secrets.toml.example`). Missing: no limit on requests per minute; a user who is not logged in can reset the limit by reloading (the credit limit of the key at OpenRouter covers that); embedding costs of the Knowledge base page are not counted per user.
 - [ ] 10. Add logging and monitoring.
 
 ## Hard
@@ -101,7 +102,7 @@ Legend: `[x]` done · `[~]` partially done · `[ ]` not started
 - Project input: the user's own files and notes describe the project and are sent to the model with every question, without entering the knowledge base (`workspace.py`).
 - Work product next to the chat, written and revised by the assistant, with download.
 - Prompts in their own file (`prompts.py`); constants in `settings.py`.
-- Offline tests (`tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py`, `tests/test_guard.py`, `uv run pytest`): 43 tests with fake models and a fixed price list, no API key needed.
+- Offline tests (`tests/test_backbone.py`, `tests/test_history_and_costs.py`, `tests/test_build_index.py`, `tests/test_guard.py`, `uv run pytest`): 46 tests with fake models and a fixed price list, no API key needed.
 - Command-line build tool (`build_index.py`, `build_index.bat`): updates the index from `data/library/` (`library.sync_index()`: new files embedded, deleted files dropped) or rebuilds it (`--rebuild`); both ask first and show the estimated embedding cost. The Rebuild button of the Knowledge base page asks as well.
 - Login, history and costs reuse the Sprint 1 modules `auth.py`, `user_store.py` and `pricing.py`, adapted to conversations and to the LangChain agent.
 - `Architecture.md` summarises the components and decisions.

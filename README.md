@@ -34,7 +34,7 @@ Double-click `start_app.bat`, or:
 uv run streamlit run src/scanya_ae_afa_updated0209_2_5/app.py
 ```
 
-First open **Knowledge base** (top of the page), pick a document type and upload PDF / TXT / MD files. The list shows how many sections were recognised in each document; with 0, its references name the page only. Then go back to **Assistant** and ask. Scanned PDFs (images without text) are not supported.
+The knowledge base comes ready with the invented sample regulations of `sample_data/` (13 documents, already indexed in `data/index/`). To add your own, open **Knowledge base** (top of the page), pick a document type and upload PDF / TXT / MD files. The list shows how many sections were recognised in each document; with 0, its references name the page only. Then go back to **Assistant** and ask. Scanned PDFs (images without text) are not supported.
 
 Logging in is optional. A dummy account exists for now: user `sergi`, password `sergi123`. New accounts can be created in the sidebar; any password is accepted for now.
 
@@ -50,6 +50,22 @@ Tests (no API key needed):
 uv run pytest
 ```
 
+## Host on Streamlit Community Cloud
+
+The free hosting of Streamlit runs the app on its servers; your computer can be off.
+
+1. **History repository.** Create a new **private** GitHub repository for the user histories, e.g. `rules-assistant-history` (an empty one with a README is fine). It must not be the repository of the app: every commit to that one restarts the app.
+2. **Token.** GitHub > Settings > Developer settings > Fine-grained tokens > Generate new token: *Repository access*: only the history repository; *Permissions*: Contents = Read and write.
+3. **Deploy.** At [share.streamlit.io](https://share.streamlit.io), *Create app* > from your GitHub repository of the app, branch `main`, main file `src/scanya_ae_afa_updated0209_2_5/app.py`. In *Advanced settings*: Python version **3.14** (it cannot be changed later without deleting the app), and in *Secrets* the content of `.streamlit/secrets.toml.example`, filled in.
+4. **API key limit.** At [openrouter.ai/keys](https://openrouter.ai/keys), give the key a credit limit. The app stops each user at $1 (`settings.SPENDING_LIMIT_USD`), but a user who is not logged in can start over by reloading the page.
+5. **Sharing.** In the app's *Share* settings, keep it private and invite your testers by e-mail, or make it public.
+
+What to know about the hosted app:
+
+- The dependencies come from `uv.lock`; Streamlit installs them on every deploy.
+- Every push to `main` restarts the app. Its disk is temporary: the history survives (backed up to the history repository), but documents added in the Knowledge base page of the hosted app and accounts created there are lost at the next restart. To change the base library, add the files locally, run `build_index.bat` and push `data/library/` and `data/index/`.
+- After 12 hours without visitors the app sleeps; the next visitor wakes it up (about a minute).
+
 ## Project layout
 
 | Path | Purpose |
@@ -57,13 +73,14 @@ uv run pytest
 | `src/scanya_ae_afa_updated0209_2_5/` | Application code (modules are described in `Architecture.md`). |
 | `categories.toml` | The document types. Edit to rename, add or remove them. |
 | `sample_data/<category id>/` | Invented sample regulations for testing (free to share), with expected answers in its README. |
-| `data/library/<category id>/` | Knowledge-base documents. Git-ignored: may be copyrighted. |
-| `data/index/` | Search index (LanceDB), built from the library. Git-ignored. |
-| `data/users/` | History of the logged-in users, one JSON file each. Git-ignored: contains passages of the documents. |
+| `data/library/<category id>/` | Knowledge-base documents. Committed, so the hosted app has them: only add documents that may be shared, never copyrighted ones (e.g. DIN standards). |
+| `data/index/` | Search index (LanceDB), built from the library. Committed. |
+| `data/users/` | History of the logged-in users, one JSON file each. Git-ignored (contains passages of the documents); the hosted app backs it up to a private repository. |
 | `config.yaml` | User accounts (hashed passwords) and the login-cookie key. Committed with a dummy account. |
 | `tests/` | Offline tests. |
 | `.streamlit/config.toml` | Streamlit theme and upload limit. |
-| `.env.example` | Template for the API key. |
+| `.env.example` | Template for the API key (and the optional history backup). |
+| `.streamlit/secrets.toml.example` | Template for the Secrets of the hosted app. |
 | `CLAUDE.md` | Working instructions for Claude Code. |
 
 ## Documentation

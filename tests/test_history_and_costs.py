@@ -7,6 +7,7 @@ Streamlit code and is not tested here. Run with: uv run pytest
 
 from dataclasses import asdict
 
+import httpx
 import pytest
 from langchain_core.embeddings import DeterministicFakeEmbedding
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -216,3 +217,43 @@ def test_saving_again_replaces_the_conversation_and_keeps_its_creation_date():
 def test_user_file_name_is_safe():
     user_store.save_conversation("../evil name", _conversation("a", "Question", 0.0))
     assert [path.name for path in settings.USERS_DIR.iterdir()] == ["___evil_name.json"]
+
+
+# --- user_store.py with the GitHub backup (history_backup.py replaced by a dict) ---
+
+
+@pytest.fixture
+def fake_backup(monkeypatch):
+    """A dict stands in for the backup repository: path -> file content."""
+    repository = {}
+    monkeypatch.setattr(user_store.history_backup, "is_enabled", lambda: True)
+    monkeypatch.setattr(user_store.history_backup, "download", repository.get)
+    monkeypatch.setattr(
+        user_store.history_backup, "upload", lambda path, data, message: repository.__setitem__(path, data)
+    )
+    return repository
+
+
+def test_saved_history_is_copied_to_the_backup(fake_backup):
+    user_store.save_conversation("Sergi", _conversation("a", "First question", 0.01))
+    assert list(fake_backup) == ["users/sergi.json"]
+    assert fake_backup["users/sergi.json"] == (settings.USERS_DIR / "sergi.json").read_bytes()
+
+
+def test_history_comes_back_from_the_backup_after_a_restart(fake_backup):
+    user_store.save_conversation("sergi", _conversation("a", "First question", 0.01))
+    (settings.USERS_DIR / "sergi.json").unlink()  # A restart of the hosted app empties the disk.
+
+    assert [conversation["id"] for conversation in user_store.load_conversations("sergi")] == ["a"]
+    user_store.save_conversation("sergi", _conversation("b", "Second question", 0.02))
+    assert user_store.total_cost("sergi") == pytest.approx(0.03)  # Nothing was lost.
+
+
+def test_failed_backup_keeps_the_local_copy(fake_backup, monkeypatch):
+    def fail(path, data, message):
+        raise httpx.ConnectError("no network")
+
+    monkeypatch.setattr(user_store.history_backup, "upload", fail)
+    with pytest.raises(user_store.BackupError):
+        user_store.save_conversation("sergi", _conversation("a", "First question", 0.01))
+    assert [conversation["id"] for conversation in user_store.load_conversations("sergi")] == ["a"]

@@ -13,9 +13,19 @@ The pages only draw the interface; the work is done by agent.py (chat), library.
 (documents) and user_store.py (history), which contain no Streamlit code.
 """
 
+import sys
+from pathlib import Path
+
 import streamlit as st
 
-from scanya_ae_afa_updated0209_2_5 import auth, page_chat, page_history, page_library
+# Make the package importable even when it is not installed: Streamlit only puts the folder of
+# this file on the import path, not src/. Locally `uv run` installs the package anyway; on
+# Streamlit Community Cloud it is not certain that the project itself gets installed.
+SRC_DIR = str(Path(__file__).resolve().parents[1])
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+from scanya_ae_afa_updated0209_2_5 import auth, page_chat, page_history, page_library  # noqa: E402
 
 st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/architecture:", layout="wide")
 
