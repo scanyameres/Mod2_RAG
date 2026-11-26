@@ -216,6 +216,7 @@ def answer_question(
     hybrid: bool = True,
     top_k: int = settings.TOP_K,
     max_searches: int = settings.MAX_SEARCHES,
+    use_guard: bool = True,
     chat_model: BaseChatModel | None = None,
     embeddings: Embeddings | None = None,
     guard_model: BaseChatModel | None = None,
@@ -235,18 +236,20 @@ def answer_question(
         hybrid: True = vector + keyword search; False = vector search only.
         top_k: Passages the model gets per search.
         max_searches: Searches the model may make for this answer.
+        use_guard: False skips the guard (the admin can switch it off, app_settings.py).
         chat_model, embeddings, guard_model: Only for tests, to run without an API key.
 
     Raises:
         Whatever the model or embedding API raises (missing key, network, rate limit ...);
         the UI catches it and shows an error.
     """
-    verdict = guard.check_question(question, history, guard_model)
-    if verdict.usage:
-        yield Event("usage", "", usage=verdict.usage)
-    if not verdict.allowed:
-        yield Event("blocked", verdict.message)
-        return
+    if use_guard:
+        verdict = guard.check_question(question, history, guard_model)
+        if verdict.usage:
+            yield Event("usage", "", usage=verdict.usage)
+        if not verdict.allowed:
+            yield Event("blocked", verdict.message)
+            return
 
     categories = load_categories()
     category_names = {category.id: category.name for category in categories}

@@ -1,12 +1,20 @@
-"""Knowledge base page: upload documents into a category, see what is indexed, remove documents.
+"""Knowledge base page: see what is indexed; for the admin also upload, remove, rebuild and app settings.
 
-All the work is done by library.py; this file only draws the page. Embedding documents costs
-API credits, so the page shows the cost of every upload and rebuild (pricing.py).
+Everyone sees the list of documents. Only the admin (auth.is_admin()) sees the rest, because
+it changes the app for all users:
+- upload documents (a file with the name of an existing one replaces it), remove documents,
+  rebuild the index;
+- App settings: the defaults of the Settings section and the app rules (spending limit,
+  guard), saved permanently (app_settings.py).
+
+All the work is done by library.py and app_settings.py; this file only draws the page.
+Embedding documents costs API credits, so the page shows the cost of every upload and
+rebuild (pricing.py).
 """
 
 import streamlit as st
 
-from scanya_ae_afa_updated0209_2_5 import library, pricing, settings
+from scanya_ae_afa_updated0209_2_5 import app_settings, auth, library, pricing, settings
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
 from scanya_ae_afa_updated0209_2_5.embeddings import get_embeddings
 
@@ -58,8 +66,8 @@ def _upload_section(categories: list[Category]) -> None:
             )
 
 
-def _documents_section(categories: list[Category]) -> None:
-    """List the indexed documents per category, each with a remove button."""
+def _documents_section(categories: list[Category], admin: bool) -> None:
+    """List the indexed documents per category; for the admin each with a remove button."""
     documents = library.list_documents()
     st.subheader(f"Documents ({len(documents)})")
     for category in categories:
@@ -74,6 +82,8 @@ def _documents_section(categories: list[Category]) -> None:
                     f"{document['chunks']} chunks · {document['sections']} sections · "
                     f"added {document['added_at'].replace('T', ' ')}"
                 )
+                if not admin:
+                    continue
                 # on_click runs before the page is redrawn, so the list is already up to date.
                 button.button(
                     "",
@@ -138,15 +148,75 @@ def _maintenance_section() -> None:
                     st.warning(problem, icon=":material/warning:")
 
 
+def _app_settings_section(categories: list[Category]) -> None:
+    """Admin form: the defaults of the Settings section and the app rules, saved for everyone."""
+    current = app_settings.load()
+    with st.expander("App settings", icon=":material/admin_panel_settings:"):
+        st.caption(
+            "Saved for everyone. Users can still change the search settings for their own "
+            "conversation; new conversations start with these."
+        )
+        with st.form("app_settings", border=False):
+            st.markdown("**Defaults of the Settings section**")
+            active = st.multiselect(
+                "Document types switched on",
+                [category.id for category in categories],
+                default=current["active_categories"],
+                format_func={category.id: category.name for category in categories}.get,
+            )
+            hybrid = st.toggle("Hybrid search", value=current["hybrid"])
+            top_k = st.slider("Passages per search", 1, settings.TOP_K_MAX, current["top_k"])
+            max_searches = st.slider("Searches per answer", 1, settings.MAX_SEARCHES_MAX, current["max_searches"])
+            model_name = st.selectbox(
+                "Model", settings.CHAT_MODELS, index=settings.CHAT_MODELS.index(current["model_name"])
+            )
+            st.markdown("**App rules**")
+            spending_limit = st.number_input(
+                "Spending limit per user (USD)",
+                min_value=0.0,
+                value=current["spending_limit_usd"],
+                step=0.5,
+                help="Logged in: over all conversations of the user. Not logged in: per browser session.",
+            )
+            guard_enabled = st.toggle(
+                "Safety check of every question (guard)",
+                value=current["guard_enabled"],
+                help="Off: questions go to the chat model unchecked. Only for testing.",
+            )
+            saved = st.form_submit_button("Save for everyone", icon=":material/save:", type="primary")
+    if saved:
+        try:
+            app_settings.save(
+                {
+                    "active_categories": active,
+                    "hybrid": hybrid,
+                    "top_k": top_k,
+                    "max_searches": max_searches,
+                    "model_name": model_name,
+                    "guard_enabled": guard_enabled,
+                    "spending_limit_usd": spending_limit,
+                }
+            )
+            st.success("App settings saved.", icon=":material/check_circle:")
+        except Exception as error:  # Saved on this server, but the copy to GitHub failed.
+            st.warning(f"Saved on this server, but the backup to GitHub failed: {error}", icon=":material/cloud_off:")
+
+
 def render() -> None:
-    """Draw the knowledge base page."""
+    """Draw the knowledge base page: the full page for the admin, the document list for everyone else."""
     categories = load_categories()
+    admin = auth.is_admin()
     st.title("Knowledge base")
     st.caption("The documents the assistant can search. Each document belongs to one category.")
+    if not admin:
+        st.info("Only the admin can add or remove documents.", icon=":material/lock:")
+        _documents_section(categories, admin=False)
+        return
     _upload_section(categories)
     # Reserve the place of the document list, but fill it last: a rebuild (drawn below it)
     # changes the list, and this way the list always shows the result.
     documents_area = st.container()
     _maintenance_section()
+    _app_settings_section(categories)
     with documents_area:
-        _documents_section(categories)
+        _documents_section(categories, admin=True)

@@ -17,7 +17,11 @@ remembered after a restart.
 
 The app works without logging in. Logging in adds the history (user_store.py).
 
-Public functions: login_area() (draws the login box), current_user().
+Roles: a user whose "roles" in config.yaml include settings.ADMIN_ROLE is the admin
+(is_admin()): only the admin may change the knowledge base and save the app settings. Roles
+are set by editing config.yaml; accounts created in the app never get one.
+
+Public functions: login_area() (draws the login box), current_user(), is_admin().
 """
 
 import os
@@ -67,6 +71,19 @@ def current_user() -> str | None:
     if st.session_state.get("authentication_status"):
         return st.session_state["username"]
     return None
+
+
+def is_admin() -> bool:
+    """True if the logged-in user has the admin role in config.yaml (False if nobody is logged in).
+
+    Read from the file, not from the login cookie, so removing the role takes effect at once.
+    """
+    username = current_user()
+    if not username or not settings.AUTH_CONFIG_FILE.exists():
+        return False
+    config = yaml.safe_load(settings.AUTH_CONFIG_FILE.read_text(encoding="utf-8"))
+    user = config["credentials"]["usernames"].get(username) or {}
+    return settings.ADMIN_ROLE in (user.get("roles") or [])
 
 
 def login_area() -> str | None:

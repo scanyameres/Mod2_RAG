@@ -17,6 +17,11 @@ LIBRARY_DIR = DATA_DIR / "library"  # Knowledge-base files, one sub-folder per c
 INDEX_DIR = DATA_DIR / "index"  # LanceDB database (built from the library, can be rebuilt).
 USERS_DIR = DATA_DIR / "users"  # History of logged-in users, one JSON file each (user_store.py).
 AUTH_CONFIG_FILE = PROJECT_ROOT / "config.yaml"  # User accounts and login cookie (auth.py).
+APP_SETTINGS_FILE = DATA_DIR / "app_settings.json"  # Settings saved by the admin (app_settings.py).
+
+# Role (in config.yaml, "roles" of a user) that may manage the knowledge base and save the
+# app settings. Accounts created in the app never get a role.
+ADMIN_ROLE = "admin"
 
 # --- Models (OpenRouter ids) ---
 # Chat models the user can choose from. The first one is the default.
@@ -80,6 +85,7 @@ TYPICAL_ANSWER_OUTPUT_TOKENS = 300
 # Most a user may spend on answers (chat model, guard and search embeddings), in USD. Logged
 # in: over all conversations in the user's history. Not logged in: over the browser session
 # (a reload starts a new session, so set a limit on the API key at OpenRouter as well).
+# Default only: the admin can change it in the app (app_settings.py).
 SPENDING_LIMIT_USD = 1.00
 
 # --- Limits (input validation) ---

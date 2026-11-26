@@ -2,7 +2,8 @@
 
 - Project input (sidebar): the user's own files and notes about the project.
 - Settings (sidebar): document types to search, hybrid search on/off, passages per search,
-  searches per answer, chat model.
+  searches per answer, chat model. Every user can change them for their own conversation; a
+  new conversation starts with the defaults the admin saved (app_settings.py).
 - Costs (sidebar): estimated cost of this chat per model, and the logged-in user's total.
 - Chat (left): the conversation; every answer lists its references.
 - Output (right): the work product the assistant writes, all references of the conversation,
@@ -36,7 +37,7 @@ from dataclasses import asdict
 
 import streamlit as st
 
-from scanya_ae_afa_updated0209_2_5 import agent, auth, chunking, library, pricing, settings, user_store
+from scanya_ae_afa_updated0209_2_5 import agent, app_settings, auth, chunking, library, pricing, settings, user_store
 from scanya_ae_afa_updated0209_2_5.categories import Category, load_categories
 from scanya_ae_afa_updated0209_2_5.workspace import Workspace, citation_numbers
 
@@ -59,16 +60,19 @@ TITLE_LENGTH = 80
 # --- State ---
 
 
+def _default_settings() -> dict:
+    """The Settings values a new conversation starts with: the defaults saved by the admin."""
+    saved = app_settings.load()
+    return {key: saved[key] for key in ("active_categories", "hybrid", "top_k", "max_searches", "model_name")}
+
+
 def _init_state(categories: list[Category]) -> None:
     """Create the session values on the first run."""
     state = st.session_state
     state.setdefault("messages", [])
     state.setdefault("workspace", Workspace())
-    state.setdefault("active_categories", [category.id for category in categories])
-    state.setdefault("hybrid", True)
-    state.setdefault("top_k", settings.TOP_K)
-    state.setdefault("max_searches", settings.MAX_SEARCHES)
-    state.setdefault("model_name", settings.CHAT_MODELS[0])
+    for key, value in _default_settings().items():
+        state.setdefault(key, value)
     state.setdefault("usage", {})
     state.setdefault("conversation_id", uuid.uuid4().hex)
     state.setdefault("unsaved", False)
@@ -79,7 +83,7 @@ def _init_state(categories: list[Category]) -> None:
 
 
 def _new_conversation(categories: list[Category]) -> None:
-    """Start over: no messages, empty workspace, default search settings, no costs.
+    """Start over: no messages, empty workspace, the default settings, no costs.
 
     The conversation shown before stays in the history of a logged-in user.
     """
@@ -87,10 +91,7 @@ def _new_conversation(categories: list[Category]) -> None:
     state["session_cost"] += pricing.total_cost(state["usage"])
     state["messages"] = []
     state["workspace"] = Workspace()
-    state["active_categories"] = [category.id for category in categories]
-    state["hybrid"] = True
-    state["top_k"] = settings.TOP_K
-    state["max_searches"] = settings.MAX_SEARCHES
+    state.update(_default_settings())
     state["usage"] = {}
     state["conversation_id"] = uuid.uuid4().hex
     state["unsaved"] = False
@@ -171,7 +172,7 @@ def _save_with_warning(username: str) -> None:
 
 
 def _spent(username: str | None) -> float:
-    """What the user spent so far, for settings.SPENDING_LIMIT_USD.
+    """What the user spent so far, for the spending limit (app_settings.py).
 
     Logged in: all conversations in the history (the conversation on the page is saved after
     every answer, so it is included). Not logged in: the conversations of this browser session.
@@ -379,9 +380,9 @@ def _costs_section(username: str | None) -> None:
         st.caption("All conversations in *My history*.")
     else:
         st.caption("Log in to save your conversations and keep a total.")
-    limit = settings.SPENDING_LIMIT_USD
+    limit = app_settings.load()["spending_limit_usd"]
     st.progress(
-        min(_spent(username) / limit, 1.0),
+        min(_spent(username) / limit, 1.0) if limit else 1.0,
         text=f"Spending limit: {pricing.format_usd(_spent(username))} of {pricing.format_usd(limit)} used",
     )
 
@@ -484,6 +485,7 @@ def _answer(question: str, category_names: dict[str, str]) -> None:
                     state["hybrid"],
                     state["top_k"],
                     state["max_searches"],
+                    use_guard=app_settings.load()["guard_enabled"],
                 )
                 for event in events:
                     if event.kind == "usage":
@@ -569,9 +571,9 @@ def _chat_section(categories: list[Category], category_names: dict[str, str]) ->
             problem = agent.validate_question(question)
             if problem:
                 st.warning(problem, icon=":material/warning:")
-            elif _spent(auth.current_user()) >= settings.SPENDING_LIMIT_USD:
+            elif _spent(auth.current_user()) >= (limit := app_settings.load()["spending_limit_usd"]):
                 st.warning(
-                    f"The spending limit of {pricing.format_usd(settings.SPENDING_LIMIT_USD)} per user is "
+                    f"The spending limit of {pricing.format_usd(limit)} per user is "
                     "reached, so no more questions can be answered. Please contact the app owner.",
                     icon=":material/money_off:",
                 )

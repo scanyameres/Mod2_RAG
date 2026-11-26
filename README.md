@@ -9,7 +9,7 @@ Task description: [docs/125.md](docs/125.md).
 - **Output**: ask for a document (checklist, list of applicable rules, summary); it appears next to the chat, can be revised by chatting, and downloaded.
 - **Search steps**: for every answer, see what the assistant searched for, all passages it was given and how well each one matched, and which ones the answer cites.
 - **Hybrid search**: finds passages by meaning (embeddings) and by exact words (BM25), so both "minimum ceiling height in offices" and "DIN 4102-4" work.
-- **Knowledge base page**: add or remove the documents the assistant searches, per document type.
+- **Knowledge base page**: everyone sees the documents the assistant searches; the admin also adds or removes them, rebuilds the index and sets the app settings (defaults of the Settings section, spending limit, safety check) for everyone.
 - **Login and history** (optional): log in or create an account in the sidebar; your conversations and work products are then saved and can be reopened on the **My history** page.
 - **Safety check**: a small, cheap model checks every question first; attempts to change the assistant's rules, off-topic and harmful requests are refused before the main model is called.
 - **Costs**: the sidebar shows the estimated cost of the chat so far, per model, and the total of the logged-in user.
@@ -34,9 +34,11 @@ Double-click `start_app.bat`, or:
 uv run streamlit run src/scanya_ae_afa_updated0209_2_5/app.py
 ```
 
-The knowledge base comes ready with the invented sample regulations of `sample_data/` (13 documents, already indexed in `data/index/`). To add your own, open **Knowledge base** (top of the page), pick a document type and upload PDF / TXT / MD files. The list shows how many sections were recognised in each document; with 0, its references name the page only. Then go back to **Assistant** and ask. Scanned PDFs (images without text) are not supported.
+The knowledge base comes ready with the invented sample regulations of `sample_data/` (13 documents, already indexed in `data/index/`). To add your own (admin only), open **Knowledge base** (top of the page), pick a document type and upload PDF / TXT / MD files. The list shows how many sections were recognised in each document; with 0, its references name the page only. Then go back to **Assistant** and ask. Scanned PDFs (images without text) are not supported.
 
-Logging in is optional. Demo accounts (user / password): `sergi` / `sergi123`, `lluis` / `lluis123`, `turing` / `turing123`, `guest` / `guest123`. They are in `config.yaml`, so they survive restarts of the hosted app. New accounts can be created in the sidebar; any password is accepted for now.
+Logging in is optional. Demo accounts (user / password): `lluis` / `lluis123`, `turing` / `turing123`, `guest` / `guest123`. They are in `config.yaml`, so they survive restarts of the hosted app. New accounts can be created in the sidebar; any password is accepted for now.
+
+Admin: the account `sergi` has the role `admin` in `config.yaml` (no account created in the app gets a role). Its password is private; to change it, run `uv run python -m scanya_ae_afa_updated0209_2_5.set_password sergi`, then commit and push `config.yaml`.
 
 Without the app: after copying files into `data/library/<category id>/` or deleting some, run `build_index.bat` to bring the index up to date (new files are embedded, deleted ones dropped; unchanged ones are skipped). `build_index.bat --rebuild` embeds everything again. Both show the estimated cost and ask first.
 

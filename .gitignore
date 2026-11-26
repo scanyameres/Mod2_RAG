@@ -19,9 +19,12 @@ dist/
 # (the invented sample documents, or with permission), never copyrighted ones such as DIN
 # standards. Not committed:
 # data/users/ holds the saved conversations of logged-in users (backed up to a separate
-# private repository instead, see history_backup.py), data/raw/ is a local scratch folder.
+# private repository instead, see history_backup.py), data/raw/ is a local scratch folder,
+# data/app_settings.json holds the settings saved by the admin (backed up like the histories,
+# see app_settings.py).
 data/users/
 data/raw/
+data/app_settings.json
 
 # Tooling caches
 .pytest_cache/

@@ -26,7 +26,8 @@ credentials:
       last_name: Dummy
       logged_in: true
       password: $2b$12$xuFaRuq/RayHSIIiOQXyx.0hQ.T1EV49bz8CyxJkZBv/JCugBS.QS
-      roles: null
+      roles:
+      - admin
     turing:
       email: turing@example.com
       failed_login_attempts: 0
