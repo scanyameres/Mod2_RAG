@@ -6,8 +6,10 @@ Run with start_app.bat, or: uv run streamlit run src/scanya_ae_afa_updated0209_2
 - Knowledge base (page_library.py): add or remove the documents the assistant searches.
 - My history (page_history.py): the saved conversations of the logged-in user.
 
-The login box (auth.py) is drawn here, at the top of the sidebar, so it is on every page.
-Logging in is optional; the pages ask auth.current_user() who is logged in.
+The language flags (language.py) and the login box (auth.py) are drawn here, at the top of
+the sidebar, so they are on every page. Logging in is optional; the pages ask
+auth.current_user() who is logged in. All interface texts are looked up with language.t()
+(texts in translations.py).
 
 The pages only draw the interface; the work is done by agent.py (chat), library.py
 (documents) and user_store.py (history), which contain no Streamlit code.
@@ -26,8 +28,9 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 from scanya_ae_afa_updated0209_2_5 import auth, flow_diagram, page_chat, page_history, page_library  # noqa: E402
+from scanya_ae_afa_updated0209_2_5.language import FLAG_CSS, picker, t  # noqa: E402
 
-st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/architecture:", layout="wide")
+st.set_page_config(page_title=t("page_title"), page_icon=":material/architecture:", layout="wide")
 
 # The custom CSS of the app (the flow diagram has its own, in flow_diagram.py):
 # 1. Less empty space above and beside the content (Streamlit's 5rem side padding made the
@@ -47,6 +50,7 @@ st.set_page_config(page_title="Building Rules Assistant", page_icon=":material/a
 # 5. The page links at the top start where the main content starts ("Assistant" above "Chat").
 # 6. No row of min/max numbers below the chat's sliders: the range is in their labels (page_chat.py).
 # 7. In a narrow window the output view buttons lose their icons and get smaller, so they fit on one row.
+# 8. The flags on the language buttons (language.FLAG_CSS).
 BOX_HEIGHT = "calc(100vh - 27.5rem)"  # Chat box and output boxes.
 BOX_MIN_HEIGHT = "12rem"  # In a low window the page scrolls rather than squeezing the boxes further.
 SIDE_PADDING = "2rem"
@@ -86,22 +90,23 @@ st.html(
         .st-key-output_view button span:has(> [data-testid='stIconMaterial']) {{ display: none; }}
         .st-key-output_view button {{ padding: 0 0.4rem !important; }}
         .st-key-output_view button p {{ font-size: 0.8rem; }} }}
+    {FLAG_CSS}
     </style>
     """
 )
 
 # Page links at the top, so the sidebar is free for the login, the assistant's input and settings.
 assistant_page = st.Page(
-    page_chat.render, title="Assistant", icon=":material/forum:", url_path="assistant", default=True
+    page_chat.render, title=t("nav_assistant"), icon=":material/forum:", url_path="assistant", default=True
 )
 page = st.navigation(
     [
         assistant_page,
-        st.Page(page_library.render, title="Knowledge base", icon=":material/library_books:", url_path="knowledge-base"),
+        st.Page(page_library.render, title=t("nav_library"), icon=":material/library_books:", url_path="knowledge-base"),
         # The history page gets the assistant page, to switch to it when a conversation is opened.
         st.Page(
             lambda: page_history.render(assistant_page),
-            title="My history",
+            title=t("nav_history"),
             icon=":material/history:",
             url_path="history",
         ),
@@ -109,10 +114,12 @@ page = st.navigation(
     position="top",
 )
 
-# The login box, at the top of the sidebar on every page. It must come after st.navigation():
+# The language flags and the login box, at the top of the sidebar on every page. The login box
+# must come after st.navigation():
 # reading the login cookie restarts the script once, and if the pages are not known by then,
 # a page opened by its address (or reloaded) is replaced by the Assistant page.
 with st.sidebar:
+    picker()
     auth.login_area()
 
 page.run()

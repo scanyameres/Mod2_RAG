@@ -35,6 +35,7 @@ from dotenv import load_dotenv
 from streamlit_authenticator.utilities import LoginError, Validator
 
 from scanya_ae_afa_updated0209_2_5 import settings
+from scanya_ae_afa_updated0209_2_5.language import t
 
 # Seconds to wait after a login or logout before the page is redrawn. The login cookie is
 # written (or removed) by a small component in the browser; redrawing at once would remove
@@ -96,9 +97,9 @@ def login_area() -> str | None:
     authenticator, config = _get_authenticator()
     if st.session_state.get("authentication_status"):
         name_column, logout_column = st.columns((3, 2), vertical_alignment="center")
-        name_column.caption(f"Signed in as **{st.session_state['username']}**")
+        name_column.caption(t("signed_in_as", user=st.session_state["username"]))
         with logout_column:
-            authenticator.logout(location="main", key="Logout")
+            authenticator.logout(t("logout"), location="main", key="Logout")
         if not st.session_state.get("authentication_status"):
             time.sleep(COOKIE_WAIT_SECONDS)
             st.rerun()  # just logged out: redraw with the login box
@@ -106,38 +107,53 @@ def login_area() -> str | None:
 
     # Not logged in. login() also restores a session from the login cookie, so it must run on
     # every page load; it is drawn inside the (collapsed) expander.
-    with st.expander("Log in or create an account", icon=":material/lock:"):
-        st.caption("Optional. Logged in, your conversations and work products are saved in *My history*.")
-        login_tab, signup_tab = st.tabs(("Log in", "Create account"))
+    with st.expander(t("login_box"), icon=":material/lock:"):
+        st.caption(t("login_optional"))
+        login_tab, signup_tab = st.tabs((t("login"), t("create_account")))
         with login_tab:
             try:
-                authenticator.login(location="main", key="Login")
+                authenticator.login(location="main", key="Login", fields=_login_fields())
             except LoginError as error:
                 st.error(str(error))
             if st.session_state.get("authentication_status") is False:
-                st.error("Username or password is incorrect.")
+                st.error(t("login_wrong"))
         with signup_tab:
             # On the hosted app config.yaml is reset at every restart (it comes from git), so a
             # new account and the way to its history are gone then.
-            st.info(
-                "Accounts created here only work until the app restarts: the account and its "
-                "saved conversations do not persist. For a permanent account, contact the admin.",
-                icon=":material/info:",
-            )
+            st.info(t("signup_temporary"), icon=":material/info:")
             try:
                 _, new_username, _ = authenticator.register_user(
-                    location="main", captcha=False, password_hint=False
+                    location="main", captcha=False, password_hint=False, fields=_signup_fields()
                 )
                 if new_username:
                     _save_config(config)  # The library added the account to config["credentials"].
-                    st.success(f"Account **{new_username}** created. You can now log in.")
+                    st.success(t("account_created", user=new_username))
             except Exception as error:  # e.g. username taken, passwords don't match
                 st.error(str(error))
-    st.caption("Log in to save your conversations and keep a total cost.")
+    st.caption(t("login_hint"))
     if st.session_state.get("authentication_status"):
         time.sleep(COOKIE_WAIT_SECONDS)
         st.rerun()  # just logged in: redraw with the "signed in" line
     return None
+
+
+def _login_fields() -> dict:
+    """Labels of the login form, in the user's language (the library's own are English)."""
+    return {"Form name": t("login"), "Username": t("username"), "Password": t("password"), "Login": t("login")}
+
+
+def _signup_fields() -> dict:
+    """Labels of the create-account form, in the user's language."""
+    return {
+        "Form name": t("create_account"),
+        "First name": t("first_name"),
+        "Last name": t("last_name"),
+        "Email": t("email"),
+        "Username": t("username"),
+        "Password": t("password"),
+        "Repeat password": t("repeat_password"),
+        "Register": t("create_account"),
+    }
 
 
 def _get_authenticator() -> tuple[stauth.Authenticate, dict]:
@@ -158,7 +174,7 @@ def _get_authenticator() -> tuple[stauth.Authenticate, dict]:
         cookie_key=_cookie_key(),
         cookie_expiry_days=config["cookie"]["expiry_days"],
         validator=_AnyPassword(),
-        password_instructions="Any password is accepted for now.",  # Help text of the password field.
+        password_instructions=t("any_password"),  # Help text of the password field.
     )
     return authenticator, config
 

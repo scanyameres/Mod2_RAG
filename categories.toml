@@ -7,6 +7,8 @@
 #   (or rebuild the index afterwards on the Knowledge base page).
 # - name: shown in the app.
 # - description: shown as a tooltip, and told to the chat model.
+# - names, descriptions (optional): the same in other languages of the interface (ca = Catalan,
+#   de = German). Without them the English ones are shown. The chat model gets the English ones.
 #
 # The invented test documents of sample_data/ use other categories (see sample_data/README.md).
 
@@ -14,13 +16,19 @@
 id = "cte"
 name = "CTE (national rules, Spain)"
 description = "Código Técnico de la Edificación and related national regulations: Documentos Básicos on structural safety (SE: actions, foundations, steel, masonry, timber), energy saving (HE), noise (HR), health (HS), fire safety (SI), safety of use and accessibility (SUA); the thermal installations regulation (RITE) and fire safety in industrial buildings (RSCIEI)."
+names = { ca = "CTE (normativa estatal)", de = "CTE (nationale Vorschriften, Spanien)" }
+descriptions = { ca = "Codi Tècnic de l'Edificació i normativa estatal relacionada: Documents Bàsics de seguretat estructural (SE: accions, fonaments, acer, fàbrica, fusta), estalvi d'energia (HE), soroll (HR), salubritat (HS), seguretat en cas d'incendi (SI), seguretat d'utilització i accessibilitat (SUA); el reglament d'instal·lacions tèrmiques (RITE) i la seguretat contra incendis en establiments industrials (RSCIEI).", de = "Código Técnico de la Edificación und zugehörige nationale Vorschriften: Grunddokumente zu Tragwerkssicherheit (SE: Einwirkungen, Gründungen, Stahl, Mauerwerk, Holz), Energieeinsparung (HE), Schallschutz (HR), Gesundheitsschutz (HS), Brandschutz (SI), Nutzungssicherheit und Barrierefreiheit (SUA); die Verordnung über thermische Anlagen (RITE) und Brandschutz in Industriegebäuden (RSCIEI)." }
 
 [[category]]
 id = "gencat"
 name = "Catalonia (regional rules)"
 description = "Regulations of the Generalitat de Catalunya: the Accessibility Code of Catalonia (Decret 209/2023) and the minimum habitability conditions for dwellings (Decret 141/2012)."
+names = { ca = "Catalunya (normativa autonòmica)", de = "Katalonien (regionale Vorschriften)" }
+descriptions = { ca = "Normativa de la Generalitat de Catalunya: el Codi d'accessibilitat de Catalunya (Decret 209/2023) i les condicions mínimes d'habitabilitat dels habitatges (Decret 141/2012).", de = "Vorschriften der Generalitat de Catalunya: der Barrierefreiheitskodex Kataloniens (Decret 209/2023) und die Mindestanforderungen an die Bewohnbarkeit von Wohnungen (Decret 141/2012)." }
 
 [[category]]
 id = "poum_terrassa"
 name = "Terrassa (municipal plan)"
 description = "Urban planning rules of the municipality of Terrassa (POUM, Normes Urbanístiques): zones, permitted uses, building parameters and parking. They take precedence over the general rules on these points."
+names = { ca = "Terrassa (pla municipal)", de = "Terrassa (kommunaler Plan)" }
+descriptions = { ca = "Normes urbanístiques del municipi de Terrassa (POUM): zones, usos admesos, paràmetres d'edificació i aparcament. En aquests punts prevalen sobre les normes generals.", de = "Städtebauliche Vorschriften der Gemeinde Terrassa (POUM, Normes Urbanístiques): Zonen, zulässige Nutzungen, Bauparameter und Stellplätze. In diesen Punkten haben sie Vorrang vor den allgemeinen Vorschriften." }

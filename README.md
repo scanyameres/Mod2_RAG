@@ -12,9 +12,11 @@ Task description: [docs/125.md](docs/125.md).
 - **Knowledge base page**: everyone sees the documents the assistant searches; the admin also adds or removes them, rebuilds the index and sets the app settings (defaults for new conversations, spending limit, safety check) for everyone, with a button to go back to the original defaults.
 - **Login and history** (optional): log in or create an account in the sidebar; your conversations and work products are then saved and can be reopened on the **My history** page.
 - **Safety check**: a small, cheap model checks every question first; attempts to change the assistant's rules, off-topic and harmful requests are refused before the main model is called.
-- **Costs**: the sidebar shows the estimated cost of the chat so far, per model, and the total of the logged-in user.
+- **Export**: download the conversation as Markdown (questions, answers, references, work product), CSV (for Excel) or JSON (everything, including search steps and costs).
+- **Three languages**: switch the interface between English, Catalan and German with the flags at the top of the sidebar. Ask in any language: the assistant answers in the language of the question, also when the documents are in Spanish or Catalan.
+- **Costs**: the line below the chat shows the estimated cost of the chat so far and what you spent of your limit; its details show the cost per model and the total of the logged-in user.
 
-**Status:** tested offline with fake models; not yet run with a real API key. See [docs/TASKS.md](docs/TASKS.md).
+**Status:** knowledge base with the real documents (CTE, GENCAT, POUM Terrassa) indexed; tested with the real API key and offline with fake models (`uv run pytest`). See [docs/TASKS.md](docs/TASKS.md).
 
 ## Setup
 

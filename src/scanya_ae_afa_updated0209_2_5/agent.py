@@ -56,8 +56,9 @@ class Event:
     kind "tool_result": the tool answered `text`; for a search, `sources` are the passages
                         it found, best first (dicts with the Hit fields plus "number").
     kind "answer":      `text` is the final answer.
-    kind "blocked":     the guard did not pass the question on; `text` is the message for the
-                        user. It is the last event: the chat model is not called.
+    kind "blocked":     the guard did not pass the question on; `text` is its reason for the
+                        user ("" if it gave no readable verdict). It is the last event: the
+                        chat model is not called.
     kind "usage":       one request to the chat model was made, one to the guard model, or one
                         to the embedding model (the query of a search); `usage` has its "model", "input_tokens",
                         "output_tokens" and "reported_cost" (USD, from OpenRouter; None if not
@@ -72,11 +73,15 @@ class Event:
 
 
 def validate_question(question: str) -> str | None:
-    """Return a message for the user if the question cannot be sent, else None."""
+    """Return what is wrong with the question, else None.
+
+    The problem is a key of translations.TEXTS, so the page can show it in the user's language:
+    "question_empty", or "question_too_long" (with the values `length` and `max`).
+    """
     if not question.strip():
-        return "Please type a question."
+        return "question_empty"
     if len(question) > settings.MAX_QUESTION_LENGTH:
-        return f"The question is too long ({len(question):,} characters, maximum {settings.MAX_QUESTION_LENGTH:,})."
+        return "question_too_long"
     return None
 
 
@@ -217,6 +222,7 @@ def answer_question(
     top_k: int = settings.TOP_K,
     max_searches: int = settings.MAX_SEARCHES,
     use_guard: bool = True,
+    language: str = "English",
     chat_model: BaseChatModel | None = None,
     embeddings: Embeddings | None = None,
     guard_model: BaseChatModel | None = None,
@@ -237,6 +243,8 @@ def answer_question(
         top_k: Passages the model gets per search.
         max_searches: Searches the model may make for this answer.
         use_guard: False skips the guard (the admin can switch it off, app_settings.py).
+        language: Language of the interface, in English ("Catalan"), for the guard's reason.
+            The answer itself is in the language of the question (prompts.SYSTEM_PROMPT).
         chat_model, embeddings, guard_model: Only for tests, to run without an API key.
 
     Raises:
@@ -244,11 +252,11 @@ def answer_question(
         the UI catches it and shows an error.
     """
     if use_guard:
-        verdict = guard.check_question(question, history, guard_model)
+        verdict = guard.check_question(question, history, guard_model, language)
         if verdict.usage:
             yield Event("usage", "", usage=verdict.usage)
         if not verdict.allowed:
-            yield Event("blocked", verdict.message)
+            yield Event("blocked", verdict.reason)
             return
 
     categories = load_categories()

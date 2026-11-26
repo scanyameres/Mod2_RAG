@@ -39,7 +39,7 @@ class GuardVerdict(BaseModel):
     """What the guard model must answer (structured output)."""
 
     allowed: bool = Field(description="True if the message may be passed on to the assistant.")
-    reason: str = Field(description="If not allowed: one short sentence for the user, always in English.")
+    reason: str = Field(description="If not allowed: one short sentence for the user, in the language asked for.")
 
 
 @dataclass(frozen=True)
@@ -47,17 +47,24 @@ class GuardResult:
     """Result of check_question().
 
     allowed: True if the question may go on to the chat agent.
-    message: if not allowed, the text to show the user; else "".
+    reason:  if not allowed, the guard's one sentence for the user, in the language asked for;
+             "" if allowed, or if the model gave no readable verdict (the page then shows its
+             own message, translations.py "guard_no_verdict").
     usage:   the guard's request, with the keys of pricing.add_request(); {} if the model
              reported no token counts.
     """
 
     allowed: bool
-    message: str = ""
+    reason: str = ""
     usage: dict = field(default_factory=dict)
 
 
-def check_question(question: str, history: list[dict], guard_model: BaseChatModel | None = None) -> GuardResult:
+def check_question(
+    question: str,
+    history: list[dict],
+    guard_model: BaseChatModel | None = None,
+    language: str = "English",
+) -> GuardResult:
     """Ask the guard model whether `question` may be passed on to the chat agent.
 
     Args:
@@ -65,6 +72,7 @@ def check_question(question: str, history: list[dict], guard_model: BaseChatMode
         history: Earlier messages of the conversation ({"role", "content"} dicts, oldest
             first); only the start of the last assistant answer is shown to the guard.
         guard_model: Only for tests, to run without an API key.
+        language: Language of the reason, in English ("Catalan"): the language of the interface.
 
     Raises:
         Whatever the model API raises (missing key, network ...): fail closed, see above.
@@ -77,6 +85,7 @@ def check_question(question: str, history: list[dict], guard_model: BaseChatMode
     user_prompt = prompts.GUARD_USER_PROMPT.format(
         last_answer=last_answer[: settings.GUARD_CONTEXT_CHARS] or "(none, this is the first message)",
         question=question,
+        language=language,
     )
     result = checker.invoke([("system", prompts.GUARD_SYSTEM_PROMPT), ("user", user_prompt)])
 
@@ -91,7 +100,7 @@ def check_question(question: str, history: list[dict], guard_model: BaseChatMode
         }
 
     if verdict is None:  # The model answered, but not in the required format.
-        return GuardResult(False, prompts.GUARD_NO_VERDICT, usage)
+        return GuardResult(False, "", usage)
     if not verdict.allowed:
-        return GuardResult(False, prompts.GUARD_BLOCKED.format(reason=verdict.reason.strip()), usage)
+        return GuardResult(False, verdict.reason.strip(), usage)
     return GuardResult(True, "", usage)

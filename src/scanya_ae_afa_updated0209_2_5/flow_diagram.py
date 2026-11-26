@@ -19,8 +19,13 @@ The diagram is also the key of the app's colour code (COLOURS): every step has t
 the controls and views that change or show it, e.g. the Model box is blue like the model
 settings below the chat and the Search steps view. app.py tints those with the same values.
 
-Public: COLOURS, STAGE_LABELS, next_stage(), diagram_html().
+The texts of the boxes and of the status box are in translations.py (keys "node_<stage>",
+"node_<stage>_sub" and "stage_<stage>"), so the diagram is drawn in the user's language.
+
+Public: COLOURS, STAGES_WITH_LABEL, stage_label(), next_stage(), diagram_html().
 """
+
+from scanya_ae_afa_updated0209_2_5 import translations
 
 # The colour code of the app, as "R, G, B" for see-through rgba() colours (they work in light
 # and dark mode). 47, 111, 98 is the app's primary colour #2F6F62 (.streamlit/config.toml).
@@ -31,27 +36,12 @@ COLOURS = {
     "neutral": "120, 120, 120",  # You, Guard, Answer: the question field and the chat.
 }
 
-# Stage id -> text of the status box in the chat while that stage runs.
-STAGE_LABELS = {
-    "guard": "Checking the question…",
-    "model": "Thinking…",
-    "search": "Reading the knowledge base…",
-    "write": "Writing the work product…",
-    "answer": "Answering…",
-}
+# The stages that have a text for the status box in the chat while they run (stage_label()).
+STAGES_WITH_LABEL = ("guard", "model", "search", "write", "answer")
 
 # Tool name (agent.py) -> stage of the diagram.
 _TOOL_STAGES = {"search_documentation": "search", "read_passages": "search", "write_document": "write"}
 
-# Stage id -> (title, subtitle) of its box.
-_NODES = {
-    "you": ("You", "question"),
-    "guard": ("Guard", "safety check"),
-    "model": ("Model", "LLM"),
-    "search": ("Knowledge base", "RAG search"),
-    "write": ("Work product", "tool"),
-    "answer": ("Answer", "chat"),
-}
 
 # Stage id -> its colour in COLOURS; the stages not listed are "neutral".
 _NODE_COLOURS = {"model": "model", "search": "knowledge", "write": "output"}
@@ -83,6 +73,11 @@ _CSS = """
 """
 
 
+def stage_label(stage: str, language: str = translations.DEFAULT_LANGUAGE) -> str:
+    """Text of the chat's status box while `stage` (one of STAGES_WITH_LABEL) runs, e.g. "Thinking…"."""
+    return translations.text(f"stage_{stage}", language)
+
+
 def next_stage(current: str, kind: str, tool: str = "") -> str:
     """The stage that runs after an event of `kind` (and `tool`) arrived during stage `current`.
 
@@ -100,11 +95,17 @@ def next_stage(current: str, kind: str, tool: str = "") -> str:
     return "model" if current == "guard" else current
 
 
-def diagram_html(active: str | None = None, done: set[str] = frozenset(), guard_on: bool = True) -> str:
+def diagram_html(
+    active: str | None = None,
+    done: set[str] = frozenset(),
+    guard_on: bool = True,
+    language: str = translations.DEFAULT_LANGUAGE,
+) -> str:
     """HTML of the diagram: `active` pulses, the stages in `done` are tinted more, the guard is struck out if off."""
 
     def node(stage: str) -> str:
-        title, subtitle = _NODES[stage]
+        title = translations.text(f"node_{stage}", language)
+        subtitle = translations.text(f"node_{stage}_sub", language)
         classes = ["flow-node"]
         if stage == active:
             classes.append("active")

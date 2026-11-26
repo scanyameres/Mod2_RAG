@@ -9,13 +9,13 @@ messages (no Streamlit code, no API calls).
 - Sources: every knowledge-base passage found in this conversation, each with a fixed
   number. "[3]" means the same passage in every answer and in the work product.
 
-Public: Workspace, citation_numbers().
+Public: Workspace, citation_numbers(), reference_list().
 """
 
 import re
 from dataclasses import asdict, dataclass, field
 
-from scanya_ae_afa_updated0209_2_5 import chunking, settings
+from scanya_ae_afa_updated0209_2_5 import chunking, settings, translations
 from scanya_ae_afa_updated0209_2_5.retrieval import Hit
 
 # Citations look like [1] or [2, 5].
@@ -30,6 +30,19 @@ def citation_numbers(text: str) -> list[int]:
             if number not in numbers:
                 numbers.append(number)
     return numbers
+
+
+def reference_list(sources: list[dict], language: str = translations.DEFAULT_LANGUAGE) -> str:
+    """The sources as a Markdown list, one line each: "- [3] file.pdf, section, page 12"."""
+    lines = []
+    for source in sources:
+        page = translations.text("page_number", language, page=source["page"])
+        lines.append(
+            f"- [{source['number']}] {source['source']}"
+            + (f", {source['section']}" if source["section"] else "")
+            + (f", {page}" if source["page"] else "")
+        )
+    return "\n".join(lines)
 
 
 @dataclass
@@ -90,16 +103,14 @@ class Workspace:
 
     # --- Work product ---
 
-    def export_document(self) -> str:
-        """Return the work product as Markdown, with a list of the references it cites."""
+    def export_document(self, language: str = translations.DEFAULT_LANGUAGE) -> str:
+        """Return the work product as Markdown, with a list of the references it cites.
+
+        `language`: language of the labels added here ("References", "page").
+        """
         cited = self.sources_by_number(citation_numbers(self.document))
         text = f"# {self.document_title}\n\n{self.document}\n"
         if cited:
-            lines = [
-                f"- [{source['number']}] {source['source']}"
-                + (f", {source['section']}" if source["section"] else "")
-                + (f", page {source['page']}" if source["page"] else "")
-                for source in cited
-            ]
-            text += "\n## References\n\n" + "\n".join(lines) + "\n"
+            heading = translations.text("references", language)
+            text += f"\n## {heading}\n\n" + reference_list(cited, language) + "\n"
         return text
