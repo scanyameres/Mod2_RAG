@@ -153,7 +153,7 @@ page = st.navigation(
 # reading the login cookie restarts the script once, and if the pages are not known by then,
 # a page opened by its address (or reloaded) is replaced by the Assistant page.
 with st.sidebar:
-    picker()
+    picker(disabled=page_chat.answer_pending())  # Disabled while an answer runs (page_chat.py).
     auth.login_area()
 
 page.run()

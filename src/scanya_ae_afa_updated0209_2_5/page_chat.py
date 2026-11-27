@@ -43,7 +43,14 @@ runs is kept in st.session_state:
 - "session_cost": cost of the earlier conversations of this browser session (for the spending
   limit of a user who is not logged in, see _spent());
 - "language": the language of the interface (language.py);
-- "example_question": an example request the user clicked, asked in the next run (_ask_example()).
+- "pending_question": the question just sent (question field or example button), answered in
+  the run that follows (_ask()); "answering": True during that run, see render();
+- "chat_notice": a warning or error about the last question, shown in the chat box (_notice()).
+
+While an answer runs, all controls are disabled. Any click would make Streamlit start the
+page again from the top, which stops the running answer halfway: its model requests are paid,
+but the answer is lost. The page links and a reload can still stop it; render() then removes
+the unanswered question and asks the user to ask again.
 """
 
 import re
@@ -269,6 +276,7 @@ def _project_input_widgets(workspace: Workspace) -> None:
         on_change=_attach_project_files,
         args=(uploader_key,),
         help=t("project_files_help"),
+        disabled=_answering(),
     )
     for problem in state.pop("upload_problems", []):
         st.warning(problem, icon=":material/warning:")
@@ -282,6 +290,7 @@ def _project_input_widgets(workspace: Workspace) -> None:
             help=t("remove_project_file"),
             on_click=_remove_project_file,
             args=(file_name,),
+            disabled=_answering(),
         )
     workspace.project_notes = st.text_area(
         t("notes_label"),
@@ -289,6 +298,7 @@ def _project_input_widgets(workspace: Workspace) -> None:
         key=f"project_notes_{state['conversation']}",
         height=80,
         placeholder=t("notes_placeholder"),
+        disabled=_answering(),
     )
     if workspace.project_input_is_cut():
         st.warning(
@@ -326,6 +336,7 @@ def _documents_widgets(categories: list[Category], documents_per_category: Count
             value=category.id in state["active_categories"],
             key=f"category_{category.id}_{state['conversation']}",
             help=category.tooltip(language.current()),
+            disabled=_answering(),
         )
         if switched_on:
             active_ids.append(category.id)
@@ -338,6 +349,7 @@ def _documents_widgets(categories: list[Category], documents_per_category: Count
         value=state["hybrid"],
         key=f"hybrid_{state['conversation']}",
         help=t("hybrid_help"),
+        disabled=_answering(),
     )
 
 
@@ -382,6 +394,7 @@ def _chat_settings_row() -> None:
             input=f"{settings.TYPICAL_ANSWER_INPUT_TOKENS:,}",
             output=f"{settings.TYPICAL_ANSWER_OUTPUT_TOKENS:,}",
         ),
+        disabled=_answering(),
     )
     state["top_k"] = top_k_column.slider(
         t("passages_range", max=settings.TOP_K_MAX),  # Short, so the label fits on one line.
@@ -390,6 +403,7 @@ def _chat_settings_row() -> None:
         value=state["top_k"],
         key=f"top_k_{state['conversation']}",
         help=t("passages_help"),
+        disabled=_answering(),
     )
     state["max_searches"] = searches_column.slider(
         t("searches_range", max=settings.MAX_SEARCHES_MAX),
@@ -398,6 +412,7 @@ def _chat_settings_row() -> None:
         value=state["max_searches"],
         key=f"max_searches_{state['conversation']}",
         help=t("searches_help"),
+        disabled=_answering(),
     )
 
 
@@ -578,7 +593,7 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
             progress.empty()
             flow_area.html(flow_diagram.diagram_html(None, done, use_guard, code))
             state["messages"].pop()  # Forget the question, so it can be asked again.
-            st.error(_error_text(error), icon=":material/error:")
+            _notice("error", _error_text(error), ":material/error:")
             return
         done.add(stage)  # The last stage (the answer, or the guard that blocked) is done too.
         flow_area.html(flow_diagram.diagram_html(None, done, use_guard, code))
@@ -586,7 +601,7 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
             progress.empty()
             state["messages"].pop()  # A blocked question does not become part of the conversation.
             # The guard's reason, or (no readable verdict) a general message.
-            st.warning(t("guard_blocked", reason=blocked) if blocked else t("guard_no_verdict"), icon=":material/shield:")
+            _notice("warning", t("guard_blocked", reason=blocked) if blocked else t("guard_no_verdict"), ":material/shield:")
             return
         answer = answer or t("no_answer")
         st.markdown(answer)
@@ -611,7 +626,7 @@ def _export_menu() -> None:
         t("export"),
         icon=":material/download:",
         help=t("export_help"),
-        disabled=not state["messages"],
+        disabled=not state["messages"] or _answering(),
         width="stretch",
     ):
         conversation = _conversation()
@@ -634,14 +649,44 @@ def _export_menu() -> None:
             )
 
 
-def _ask_example(question: str) -> None:
-    """Button callback of an example request: it is asked in the run that follows the click."""
-    st.session_state["example_question"] = question
+def answer_pending() -> bool:
+    """True from the moment a question is sent until the run that answers it has begun.
+
+    app.py asks it before drawing the language flags, which are then disabled like all
+    controls of this page (see render()).
+    """
+    return "pending_question" in st.session_state
 
 
-def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict, flow_area):
+def _answering() -> bool:
+    """True in the run that answers a question: the controls are drawn disabled (see render())."""
+    return st.session_state.get("answering", False)
+
+
+def _ask(question: str) -> None:
+    """Callback of the example buttons: `question` is answered in the run that follows the click."""
+    st.session_state["pending_question"] = question
+
+
+def _submit_question() -> None:
+    """Callback of the question field: what the user typed is answered in the run that follows."""
+    question = st.session_state.get("question_field")
+    if question:
+        _ask(question)
+
+
+def _notice(kind: str, text: str, icon: str) -> None:
+    """Keep a warning ("warning") or error ("error") for the chat box.
+
+    Shown in the next run: render() redraws the page right after answering.
+    """
+    st.session_state["chat_notice"] = (kind, text, icon)
+
+
+def _chat_section(categories: list[Category], category_names: dict[str, str], rules: dict, flow_area, question):
     """The conversation in a scrolling box; below it the question field, the chat settings and the cost line.
 
+    `question`: the question to answer in this run (None = none, see render()).
     `rules`: the app settings (app_settings.load()), for the spending limit and the guard.
     `flow_area`: placeholder of the flow diagram (see _answer()).
     Returns the placeholder of the cost line, filled by render() once the answer has run.
@@ -659,11 +704,11 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
         help=t("new_conversation_help"),
         on_click=_new_conversation,
         args=(categories,),
+        disabled=_answering(),
     )
-    example = state.pop("example_question", None)  # An example request clicked in the last run.
     box = st.container(height=BOX_HEIGHT, key="chat_box")
     with box:
-        if not state["messages"] and not example:
+        if not state["messages"] and not question:
             if not library.list_documents():
                 st.info(t("knowledge_base_empty"), icon=":material/info:")
             elif not state["active_categories"]:
@@ -676,7 +721,7 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
                     t(request),
                     icon=":material/chat_bubble:",
                     key=f"ask_{request}",
-                    on_click=_ask_example,
+                    on_click=_ask,
                     args=(t(request),),
                 )
         for index, message in enumerate(state["messages"]):
@@ -685,10 +730,20 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
                     _show_assistant_message(message, category_names, f"m{index}")
                 else:
                     st.markdown(message["content"])
+        notice = state.pop("chat_notice", None)  # About the question of the last run.
+        if notice:
+            kind, text, icon = notice
+            (st.error if kind == "error" else st.warning)(text, icon=icon)
 
-    # st.chat_input returns the text once, when the user sends it. Inside a column it is drawn
-    # here, below the chat box. Taller than one line, so longer questions are readable while typing.
-    question = st.chat_input(t("chat_placeholder"), height=CHAT_INPUT_HEIGHT) or example
+    # Inside a column the question field is drawn here, below the chat box. Taller than one
+    # line, so longer questions are readable while typing. Sending calls _submit_question().
+    st.chat_input(
+        t("chat_placeholder"),
+        key="question_field",
+        height=CHAT_INPUT_HEIGHT,
+        on_submit=_submit_question,
+        disabled=_answering(),
+    )
     # Drawn before the question is answered, so the answer uses the settings shown.
     _chat_settings_row()
     # Reserved now, filled at the end: the costs are only known after the answer has run.
@@ -698,12 +753,13 @@ def _chat_section(categories: list[Category], category_names: dict[str, str], ru
         with box:
             problem = agent.validate_question(question)
             if problem:
-                st.warning(
+                _notice(
+                    "warning",
                     t(problem, length=f"{len(question):,}", max=f"{settings.MAX_QUESTION_LENGTH:,}"),
-                    icon=":material/warning:",
+                    ":material/warning:",
                 )
             elif _spent(auth.current_user()) >= (limit := rules["spending_limit_usd"]):
-                st.warning(t("spending_limit_reached", limit=pricing.format_usd(limit)), icon=":material/money_off:")
+                _notice("warning", t("spending_limit_reached", limit=pricing.format_usd(limit)), ":material/money_off:")
             else:
                 _answer(question, category_names, rules["guard_enabled"], flow_area)
     with export_area.container():
@@ -833,6 +889,7 @@ def _search_steps_tab(category_names: dict[str, str]) -> None:
             format_func=lambda index: f"{index + 1}. {' '.join(answers[index][0].split())[:70]}",
             # A new answer gives a new key, so the newest answer is shown.
             key=f"steps_answer_{state['conversation']}_{len(answers)}",
+            disabled=_answering(),
         )
     _show_search_steps(*answers[chosen], state["workspace"], category_names)
 
@@ -851,6 +908,7 @@ def _work_product_view(workspace: Workspace, category_names: dict[str, str]) -> 
         file_name=f"{file_name}.md",
         mime="text/markdown",
         icon=":material/download:",
+        disabled=_answering(),
     )
     # Display only: make the document's headings smaller than the title above ("##" -> "#####").
     st.markdown(re.sub(r"^(#{1,3}) ", r"###\1 ", workspace.document, flags=re.MULTILINE))
@@ -920,6 +978,7 @@ def _output_section(workspace: Workspace, category_names: dict[str, str]) -> Non
         label_visibility="collapsed",
         width="stretch",
         wrap=False,  # One row; in a narrow window app.py hides the icons so it fits.
+        disabled=_answering(),
     )
 
 
@@ -938,6 +997,15 @@ def render() -> None:
     if state["owner"] not in (None, username):
         _new_conversation(categories)
     state["owner"] = username
+    # A question without answer: its answer was stopped halfway (the page was left or reloaded
+    # while it ran). Removed, so the conversation stays a list of question-answer pairs.
+    if state["messages"] and state["messages"][-1]["role"] == "user":
+        state["messages"].pop()
+        _notice("warning", t("answer_interrupted"), ":material/replay:")
+    # A question sent since the last run (_ask()) is answered in this run, with all controls
+    # disabled; afterwards the page is redrawn with them enabled again (end of this function).
+    question = state.pop("pending_question", None)
+    state["answering"] = question is not None
     workspace = state["workspace"]
     rules = app_settings.load()  # Spending limit and guard, set by the admin; read once per run.
 
@@ -949,17 +1017,17 @@ def render() -> None:
 
     chat_column, output_column = st.columns([11, 9], gap="medium")
     with output_column:
-        # The output is filled after the chat (an answer can change the work product), but sits
-        # above the flow diagram, which must exist before the chat: _answer() redraws it.
-        output_area = st.container()
+        # Drawn before the chat; an answer that changes it shows in the redraw after answering.
+        _output_section(workspace, category_names)
+        # Must exist before the chat: _answer() redraws it.
         flow_area = st.empty()
         flow_area.html(flow_diagram.diagram_html(guard_on=rules["guard_enabled"], language=language.current()))
     with chat_column:
-        costs_area = _chat_section(categories, category_names, rules, flow_area)
-    with output_area:
-        _output_section(workspace, category_names)
+        costs_area = _chat_section(categories, category_names, rules, flow_area, question)
 
     if username and state["unsaved"] and state["messages"]:
         _save_with_warning(username)
     with costs_area.container():
         _costs_row(username, rules["spending_limit_usd"])
+    if question is not None:
+        st.rerun()  # Answered: redraw with the controls enabled again.

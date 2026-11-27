@@ -245,6 +245,13 @@ TEXTS = {
         "El control de seguretat no ha pogut valorar el teu missatge. Reformula'l, si us plau.",
         "Die Sicherheitsprüfung konnte Ihre Nachricht nicht beurteilen. Bitte formulieren Sie sie um.",
     ),
+    "answer_interrupted": (
+        "The last answer was interrupted (the page was left or reloaded while it ran). Please ask again.",
+        "L'última resposta s'ha interromput (s'ha sortit de la pàgina o s'ha recarregat mentre es generava). "
+        "Torna a preguntar, si us plau.",
+        "Die letzte Antwort wurde unterbrochen (die Seite wurde währenddessen verlassen oder neu geladen). "
+        "Bitte fragen Sie erneut.",
+    ),
     "chat": ("Chat", "Xat", "Chat"),
     "new_conversation": ("New conversation", "Nova conversa", "Neue Unterhaltung"),
     "new_conversation_help": (

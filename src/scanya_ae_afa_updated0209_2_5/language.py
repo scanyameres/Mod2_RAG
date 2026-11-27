@@ -64,8 +64,11 @@ def t(key: str, **values) -> str:
     return translations.text(key, current(), **values)
 
 
-def picker() -> None:
-    """Draw the flag buttons. The choice is kept in st.session_state["language"]."""
+def picker(disabled: bool = False) -> None:
+    """Draw the flag buttons. The choice is kept in st.session_state["language"].
+
+    `disabled`: True while the assistant answers (a click would stop the answer).
+    """
     st.segmented_control(
         # The same label in every language: a widget whose label changes may lose its value.
         " / ".join(translations.text("language", code) for code in translations.LANGUAGES),
@@ -76,4 +79,5 @@ def picker() -> None:
         key="language",
         label_visibility="collapsed",
         width="stretch",
+        disabled=disabled,
     )
