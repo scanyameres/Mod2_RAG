@@ -15,6 +15,13 @@ runs next:
 - a tool result hands back to the model;
 - the answer ends the run.
 
+A tool step usually lasts a fraction of a second, against seconds for the model, so its box
+would only flash. A step that has just ended therefore keeps an afterglow: it starts in the
+running colour and fades to the "done" tint in AFTERGLOW_SECONDS, while the next step already
+pulses. The browser plays the fade (CSS), so the answer is not delayed. page_chat.py notes when
+each step ended and passes the seconds since then (`fading`); every redraw starts the fade that
+far in (negative animation-delay), so a redraw continues a fade instead of restarting it.
+
 The diagram is also the key of the app's colour code (COLOURS): every step has the colour of
 the controls and views that change or show it, e.g. the Model box is blue like the model
 settings below the chat and the Search steps view. app.py tints those with the same values.
@@ -22,7 +29,8 @@ settings below the chat and the Search steps view. app.py tints those with the s
 The texts of the boxes and of the status box are in translations.py (keys "node_<stage>",
 "node_<stage>_sub" and "stage_<stage>"), so the diagram is drawn in the user's language.
 
-Public: COLOURS, CATEGORY_SHADES, category_colours(), STAGES_WITH_LABEL, stage_label(), next_stage(), diagram_html().
+Public: COLOURS, CATEGORY_SHADES, category_colours(), STAGES_WITH_LABEL, AFTERGLOW_SECONDS, stage_label(),
+next_stage(), diagram_html().
 """
 
 from scanya_ae_afa_updated0209_2_5 import translations
@@ -51,6 +59,9 @@ def category_colours(category_ids: list[str]) -> dict[str, str]:
 # The stages that have a text for the status box in the chat while they run (stage_label()).
 STAGES_WITH_LABEL = ("guard", "model", "search", "write", "answer")
 
+# How long a step that has just ended takes to fade from the running colour to "done".
+AFTERGLOW_SECONDS = 1.5
+
 # Tool name (agent.py) -> stage of the diagram.
 _TOOL_STAGES = {"search_documentation": "search", "read_passages": "search", "write_document": "write"}
 
@@ -59,7 +70,8 @@ _TOOL_STAGES = {"search_documentation": "search", "read_passages": "search", "wr
 _NODE_COLOURS = {"model": "model", "search": "knowledge", "write": "output"}
 
 # The look of the diagram. Each box gets its colour as the CSS variable --rgb (diagram_html()):
-# light at rest, stronger once done, solid and pulsing while it runs.
+# light at rest, stronger once done, solid and pulsing while it runs, fading after it ended
+# (.recent; its duration and delay are set per box in diagram_html()).
 _CSS = """
 <style>
 .flow { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; margin-bottom: 0.25rem; }
@@ -70,6 +82,7 @@ _CSS = """
 .flow-node.done { background: rgba(var(--rgb), 0.24); border-color: rgba(var(--rgb), 0.8); }
 .flow-node.active { background: rgb(var(--rgb)); border-color: rgb(var(--rgb)); color: #fff;
   animation: flow-pulse 1.2s ease-in-out infinite; }
+.flow-node.recent { animation-name: flow-afterglow; animation-timing-function: ease-in; }
 .flow-node.off { opacity: 0.4; text-decoration: line-through; }
 .flow-stack { flex: 1.6; display: flex; flex-direction: column; gap: 0.15rem; }
 .flow-stack .flow-node { padding: 0.1rem 0.4rem; white-space: nowrap; }
@@ -80,6 +93,10 @@ _CSS = """
 @keyframes flow-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(var(--rgb), 0.55); }
   50% { box-shadow: 0 0 0 0.35rem rgba(var(--rgb), 0); }
+}
+@keyframes flow-afterglow {
+  from { background: rgb(var(--rgb)); border-color: rgb(var(--rgb)); color: #fff; }
+  to { background: rgba(var(--rgb), 0.24); border-color: rgba(var(--rgb), 0.8); color: inherit; }
 }
 </style>
 """
@@ -112,21 +129,32 @@ def diagram_html(
     done: set[str] = frozenset(),
     guard_on: bool = True,
     language: str = translations.DEFAULT_LANGUAGE,
+    fading: dict[str, float] | None = None,
 ) -> str:
-    """HTML of the diagram: `active` pulses, the stages in `done` are tinted more, the guard is struck out if off."""
+    """HTML of the diagram: `active` pulses, the stages in `done` are tinted more, the guard is struck out if off.
+
+    `fading`: stage -> seconds since it ended. A done stage ended less than AFTERGLOW_SECONDS
+    ago still fades out (afterglow), from the point it has reached.
+    """
+    fading = fading or {}
 
     def node(stage: str) -> str:
         title = translations.text(f"node_{stage}", language)
         subtitle = translations.text(f"node_{stage}_sub", language)
         classes = ["flow-node"]
+        style = f"--rgb: {COLOURS[_NODE_COLOURS.get(stage, 'neutral')]}"
         if stage == active:
             classes.append("active")
         elif stage in done:
             classes.append("done")
+            elapsed = fading.get(stage, AFTERGLOW_SECONDS)
+            if elapsed < AFTERGLOW_SECONDS:
+                classes.append("recent")
+                # A negative delay starts the fade `elapsed` seconds in, so a redraw continues it.
+                style += f"; animation-duration: {AFTERGLOW_SECONDS}s; animation-delay: -{elapsed:.2f}s"
         if stage == "guard" and not guard_on:
             classes.append("off")
-        colour = COLOURS[_NODE_COLOURS.get(stage, "neutral")]
-        return f'<div style="--rgb: {colour}" class="{" ".join(classes)}"><b>{title}</b><small>{subtitle}</small></div>'
+        return f'<div style="{style}" class="{" ".join(classes)}"><b>{title}</b><small>{subtitle}</small></div>'
 
     arrow = '<span class="flow-arrow">→</span>'
     return (

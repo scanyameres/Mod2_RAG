@@ -54,6 +54,7 @@ the unanswered question and asks the user to ask again.
 """
 
 import re
+import time
 import uuid
 from collections import Counter
 from dataclasses import asdict
@@ -549,7 +550,14 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
         steps, sources, answer, blocked = [], {}, "", None
         progress = st.empty()  # Placeholder, so the status box can be removed if the run fails.
         stage, done = ("guard" if use_guard else "model"), {"you"}
-        flow_area.html(flow_diagram.diagram_html(stage, done, use_guard, code))
+        ended_at = {}  # Stage -> time.monotonic() when it last ended, for its afterglow in the diagram.
+
+        def draw_diagram(active: str | None) -> None:
+            now = time.monotonic()
+            fading = {ended: now - moment for ended, moment in ended_at.items()}
+            flow_area.html(flow_diagram.diagram_html(active, done, use_guard, code, fading))
+
+        draw_diagram(stage)
         try:
             # The status box is the progress indicator: it lists each step as it happens, and
             # its label says which stage runs now (like the flow diagram).
@@ -570,8 +578,9 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
                     new_stage = flow_diagram.next_stage(stage, event.kind, event.tool)
                     if new_stage != stage:
                         done.add(stage)
+                        ended_at[stage] = time.monotonic()
                         stage = new_stage
-                        flow_area.html(flow_diagram.diagram_html(stage, done, use_guard, code))
+                        draw_diagram(stage)
                         if stage in flow_diagram.STAGES_WITH_LABEL:
                             status.update(label=flow_diagram.stage_label(stage, code))
                     if event.kind == "usage":
@@ -596,7 +605,8 @@ def _answer(question: str, category_names: dict[str, str], use_guard: bool, flow
             _notice("error", _error_text(error), ":material/error:")
             return
         done.add(stage)  # The last stage (the answer, or the guard that blocked) is done too.
-        flow_area.html(flow_diagram.diagram_html(None, done, use_guard, code))
+        ended_at[stage] = time.monotonic()
+        draw_diagram(None)
         if blocked is not None:
             progress.empty()
             state["messages"].pop()  # A blocked question does not become part of the conversation.

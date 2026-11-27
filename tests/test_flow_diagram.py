@@ -28,3 +28,10 @@ def test_diagram_marks_the_running_and_the_finished_steps():
     assert 'class="flow-node done"><b>Model' in html
     assert 'class="flow-node done off"><b>Guard' in html
     assert 'class="flow-node"><b>Answer' in html
+
+
+def test_a_step_that_just_ended_fades_from_where_it_was():
+    """The search ended 0.4 s ago: it fades, starting 0.4 s in; the guard ended long ago: no fade."""
+    html = flow_diagram.diagram_html("model", {"you", "guard", "search"}, fading={"search": 0.4, "guard": 9.0})
+    assert "animation-delay: -0.40s\" class=\"flow-node done recent\"><b>Knowledge base" in html
+    assert 'class="flow-node done"><b>Guard' in html
